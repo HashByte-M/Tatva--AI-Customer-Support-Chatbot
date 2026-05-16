@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tatva Wellness Chat</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'Tatva-bg': '#12110A',
+                        'Tatva-surface': '#1C1A14',
+                        'Tatva-border': '#2A271E',
+                        'Tatva-gold': '#C4A462',
+                        'Tatva-gold-dim': 'rgba(196, 164, 98, 0.3)',
+                        'Tatva-gold-faint': 'rgba(196, 164, 98, 0.1)',
+                        'Tatva-text': '#EAE6D9',
+                        'Tatva-text-dim': '#9A9587',
+                        'Tatva-user': '#8C4A32',
+                        'Tatva-escalation': '#2A1810'
+                    },
+                    fontFamily: {
+                        'brand': ['"Montserrat"', 'sans-serif'],
+                        'hindi': ['"Noto Sans Devanagari"', 'sans-serif'],
+                        'body': ['"Inter"', 'sans-serif']
+                    },
+                    keyframes: {
+                        typingPulse: {
+                            '0%, 100%': { opacity: '0.3', transform: 'scale(0.8)' },
+                            '50%': { opacity: '1', transform: 'scale(1.2)' }
+                        },
+                        bubbleEntrance: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' }
+                        },
+                        pulseRing: {
+                            '0%': { boxShadow: '0 0 0 0 rgba(196, 164, 98, 0.4)' },
+                            '70%': { boxShadow: '0 0 0 15px transparent' },
+                            '100%': { boxShadow: '0 0 0 0 transparent' }
+                        }
+                    },
+                    animation: {
+                        'typing': 'typingPulse 1.4s infinite ease-in-out',
+                        'bubble-in': 'bubbleEntrance 250ms cubic-bezier(0.4, 0, 0.2, 1) forwards'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            background-color: #2a2a2a;
+        }
+
+        #as-widget {
+            font-family: 'Inter', sans-serif;
+            color: #EAE6D9;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #as-messages {
+            scroll-behavior: smooth;
+        }
+
+        #as-input {
+            resize: none;
+            outline: none;
+        }
+
+        .Tatva-pill {
+            transition: all 0.2s ease;
+        }
+        .Tatva-pill:active {
+            transform: scale(0.96);
+        }
+        .Tatva-pill-row.answered {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .Tatva-star-container:hover .Tatva-star {
+            color: #C4A462;
+            transform: scale(1.1);
+        }
+        .Tatva-star:hover ~ .Tatva-star {
+            color: rgba(196, 164, 98, 0.2);
+            transform: scale(1);
+        }
+        .Tatva-star.locked {
+            color: #C4A462 !important;
+            transform: scale(1) !important;
+        }
+        .Tatva-star {
+            transition: color 150ms, transform 150ms;
+        }
+
+        @media (max-width: 479px) {
+            #as-panel {
+                width: 100vw !important;
+                height: 100vh !important;
+                bottom: 0 !important;
+                right: 0 !important;
+                border-radius: 0 !important;
+            }
+            #as-panel-inner {
+                border-radius: 0 !important;
+                border: none !important;
+            }
+            #as-launcher {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="as-widget" class="fixed bottom-0 right-0 z-[9999] pointer-events-none w-full h-full sm:w-auto sm:h-auto">
+        
+        <div id="as-offline-banner" class="absolute top-0 left-0 w-full bg-red-900/90 text-white text-[11px] text-center py-1.5 hidden transition-opacity pointer-events-auto z-50 shadow-md">
+            No connection — messages will send when you're back online
+        </div>
+
+        <div id="as-panel" class="absolute bottom-[80px] right-6 w-[420px] h-[650px] flex flex-col pointer-events-auto transition-all duration-300 opacity-0 translate-y-[20px] pointer-events-none shadow-2xl">
+            <div id="as-panel-inner" class="flex flex-col w-full h-full bg-Tatva-bg border border-Tatva-border rounded-2xl overflow-hidden relative">
+                
+                <div class="flex-none bg-Tatva-bg border-b border-Tatva-border px-5 py-4 flex justify-between items-center z-10">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full border border-Tatva-gold flex items-center justify-center text-Tatva-gold shadow-[0_0_10px_rgba(196,164,98,0.1)]">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                        </div>
+                        <div class="flex flex-col">
+                            <div class="font-brand text-white text-[17px] font-semibold tracking-wide leading-none mb-1">Tatva</div>
+                            <div class="text-Tatva-text-dim text-[11px] flex items-center gap-1.5 leading-none">
+                                <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Your Wellness Companion
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 text-Tatva-gold-dim">
+                        <button id="as-minimize-btn" class="hover:text-Tatva-gold transition-colors cursor-pointer group p-1">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="group-hover:scale-110 transition-transform"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="as-messages" class="flex-1 overflow-y-auto scrollbar-hide p-5 pb-2 flex flex-col relative">
+                    
+                    <div class="flex flex-col items-center justify-center mt-6 mb-8 gap-2">
+                        <div class="text-Tatva-gold text-[28px] font-hindi leading-none mb-2">ॐ</div>
+                        <div class="text-white font-brand text-[20px] font-medium tracking-wide">Welcome · स्वागत है</div>
+                        <div class="text-Tatva-gold-dim font-body text-[14px]">How can Tatva guide your wellness today?</div>
+                    </div>
+                    
+                    <div class="flex items-center gap-4 w-full mb-6">
+                        <div class="flex-1 h-px bg-Tatva-border"></div>
+                        <div class="text-[10px] text-Tatva-border tracking-[2px] uppercase font-medium">Today</div>
+                        <div class="flex-1 h-px bg-Tatva-border"></div>
+                    </div>
+                    
+                </div>
+
+                <div id="as-quick-actions" class="flex-none px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-hide opacity-0 transition-opacity duration-300">
+                </div>
+
+                <div class="flex-none bg-Tatva-bg px-4 pb-5 pt-1 z-10 relative">
+                    <div class="bg-Tatva-surface border border-Tatva-border rounded-xl flex items-end p-1.5 focus-within:border-Tatva-gold/40 transition-colors shadow-inner">
+                        <textarea id="as-input" rows="1" class="flex-1 bg-transparent text-Tatva-text text-[14px] py-2.5 px-3 min-h-[44px] max-h-[100px] scrollbar-hide placeholder:text-Tatva-text-dim/50 font-body" placeholder="Describe your situation or ask a question..."></textarea>
+                        
+                        <button id="as-send-btn" class="w-10 h-10 bg-Tatva-gold hover:opacity-80 text-Tatva-bg rounded-lg flex items-center justify-center flex-shrink-0 ml-1 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="translate-x-[-1px] translate-y-[1px]">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="as-char-counter" class="absolute right-[70px] bottom-[30px] text-[10px] text-Tatva-text-dim hidden bg-Tatva-surface px-1"></div>
+                </div>
+            </div>
+        </div>
+
+        <button id="as-launcher" class="absolute bottom-6 right-6 w-[60px] h-[60px] bg-Tatva-gold rounded-full flex items-center justify-center pointer-events-auto cursor-pointer shadow-[0_4px_20px_rgba(196,164,98,0.3)] hover:scale-105 transition-transform group" title="Open Tatva">
+            <div id="as-pulse" class="absolute inset-0 rounded-full animate-pulse-ring pointer-events-none" style="box-shadow: 0 0 0 0 rgba(196,164,98,0.4); animation: pulseRing 3s infinite;"></div>
+            <div id="as-badge" class="absolute top-0 right-0 w-[12px] h-[12px] bg-red-500 border-2 border-Tatva-bg rounded-full hidden"></div>
+            <svg class="text-Tatva-bg w-7 h-7 relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+        </button>
+
+    </div>
+
+    <script>
+        const CONFIG = {
+            apiBase: "http://127.0.0.1:8000",
+            frontendKey: "Adishila",
+            minTypingMs: 2000, 
+            maxTypingMs: 3500, 
+            sessionRetries: 2
+        };
+
+        const state = {
+            sessionId: null,
+            sessionToken: null,
+            isOpen: false,
+            isLoading: false,
+            csatPending: false,
+            csatDone: false,
+            inputDisabled: false,
+            retryCount: 0,
+            messageQueue: [],
+            isOnline: navigator.onLine
+        };
+
+        const DOM = {
+            launcher: document.getElementById('as-launcher'),
+            panel: document.getElementById('as-panel'),
+            minimizeBtn: document.getElementById('as-minimize-btn'),
+            messages: document.getElementById('as-messages'),
+            input: document.getElementById('as-input'),
+            sendBtn: document.getElementById('as-send-btn'),
+            charCounter: document.getElementById('as-char-counter'),
+            pulse: document.getElementById('as-pulse'),
+            badge: document.getElementById('as-badge'),
+            offlineBanner: document.getElementById('as-offline-banner'),
+            quickActions: document.getElementById('as-quick-actions')
+        };
+
+        const ICONS = {
+            bot: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
+            water: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path></svg>`,
+            shield: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
+            grid: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>`,
+            hexagon: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"></polygon></svg>`
+        };
+
+        // --- SOULFUL ZEN NOTIFICATION SOUND ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playZenChime() {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const createOscillator = (freq, type, vol, duration) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                    
+                    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                    
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + duration);
+                };
+
+                createOscillator(432, 'sine', 0.4, 3);
+                createOscillator(864, 'sine', 0.08, 2);
+            } catch (e) {
+                console.log("Audio not supported or interaction required first.");
+            }
+        }
+
+        function getIconForText(text) {
+            const t = text.toLowerCase();
+            if (t.includes('water') || t.includes('jal') || t.includes('amrit')) return ICONS.water;
+            if (t.includes('emf') || t.includes('protect') || t.includes('shield') || t.includes('kavach') || t.includes('trishul')) return ICONS.shield;
+            if (t.includes('vastu') || t.includes('space') || t.includes('grid') || t.includes('pyramid')) return ICONS.grid;
+            return ICONS.hexagon; 
+        }
+
+        function toggleWidget(forceState = null) {
+            state.isOpen = forceState !== null ? forceState : !state.isOpen;
+            
+            if (state.isOpen) {
+                DOM.panel.classList.remove('opacity-0', 'translate-y-[20px]', 'pointer-events-none');
+                DOM.panel.classList.add('opacity-100', 'translate-y-0');
+                DOM.pulse.style.display = 'none';
+                DOM.badge.classList.add('hidden');
+                
+                if (!state.sessionId) {
+                    startSession();
+                } else {
+                    setTimeout(() => DOM.input.focus(), 300);
+                }
+                scrollToBottom();
+            } else {
+                DOM.panel.classList.remove('opacity-100', 'translate-y-0');
+                DOM.panel.classList.add('opacity-0', 'translate-y-[20px]', 'pointer-events-none');
+                DOM.pulse.style.display = 'block';
+            }
+            
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        DOM.launcher.addEventListener('click', () => toggleWidget());
+        DOM.minimizeBtn.addEventListener('click', () => toggleWidget(false));
+
+        DOM.input.addEventListener('input', function() {
+            this.style.height = 'auto';
+            let newHeight = Math.min(this.scrollHeight, 100);
+            this.style.height = newHeight + 'px';
+            
+            const len = this.value.length;
+            if (len >= 800) {
+                DOM.charCounter.textContent = `${len}/1000`;
+                DOM.charCounter.classList.remove('hidden');
+            } else {
+                DOM.charCounter.classList.add('hidden');
+            }
+            if (len > 1000) {
+                this.value = this.value.substring(0, 1000);
+            }
+        });
+
+        DOM.input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+
+        DOM.sendBtn.addEventListener('click', handleSend);
+
+        window.addEventListener('online', () => {
+            state.isOnline = true;
+            DOM.offlineBanner.classList.add('hidden');
+            processQueue();
+        });
+        window.addEventListener('offline', () => {
+            state.isOnline = false;
+            DOM.offlineBanner.classList.remove('hidden');
+        });
+
+        function transformText(text) {
+            let t = text || "";
+            t = t.replace(/Please email info@adishila\.in with:/gi, "Just drop us an email at info@adishila.in with:");
+            t = t.replace(/Our support team will assist you further\./gi, "Someone from our team will get back to you shortly.");
+            t = t.replace(/AdiShila/gi, "Tatva");
+            return t;
+        }
+
+        function parseBackendResponse(rawText) {
+            let text = rawText || "";
+            const options = { pills: [], nav: [], related: [] };
+            
+            const relatedMatch = text.match(/─────\nExplore further on your wellness journey:\n(.*)/);
+            if (relatedMatch) {
+                options.related = relatedMatch[1].split('|').map(s => s.replace(/\*\*/g, '').trim());
+                text = text.replace(/─────\nExplore further on your wellness journey:\n(.*)/, '').trim();
+            }
+            
+            const lines = text.split('\n');
+            const mainLines = [];
+            
+            for (let line of lines) {
+                let trimmed = line.trim();
+                
+                if (trimmed.includes('← Back') || trimmed.includes('⌂ Main Menu')) {
+                    if (trimmed.includes('← Back')) options.nav.push('← Back');
+                    if (trimmed.includes('⌂ Main Menu')) options.nav.push('⌂ Main Menu');
+                    continue;
+                }
+                
+                const pillMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+                if (pillMatch) {
+                    let rawPillText = pillMatch[1];
+                    let cleanPillText = rawPillText.replace(/\*\*/g, '').replace(/:\s*.*$/, '').trim();
+                    options.pills.push(cleanPillText);
+                    continue;
+                }
+                
+                mainLines.push(line);
+            }
+            
+            return {
+                text: mainLines.join('\n').trim(),
+                options: options
+            };
+        }
+
+        function scrollToBottom() {
+            setTimeout(() => {
+                DOM.messages.scrollTop = DOM.messages.scrollHeight;
+            }, 50);
+        }
+
+        function renderQuickActions(items) {
+            DOM.quickActions.innerHTML = '';
+            if (!items || items.length === 0) {
+                DOM.quickActions.classList.add('opacity-0');
+                DOM.quickActions.classList.remove('pt-2');
+                return;
+            }
+            
+            items.forEach(item => {
+                const btn = document.createElement('button');
+                btn.className = 'flex-none flex items-center gap-1.5 px-3 py-1.5 border border-Tatva-border rounded-full text-[12px] text-Tatva-text-dim hover:text-Tatva-gold hover:border-Tatva-gold/50 transition-colors bg-Tatva-surface outline-none Tatva-pill font-body font-medium max-w-[95%] whitespace-normal text-left leading-snug break-words';
+                btn.innerHTML = `<span class="opacity-70 flex-shrink-0">${getIconForText(item)}</span> <span>${item}</span>`;
+                btn.onclick = () => {
+                    DOM.quickActions.classList.add('opacity-0');
+                    handlePillClick(item);
+                };
+                DOM.quickActions.appendChild(btn);
+            });
+            
+            DOM.quickActions.classList.remove('opacity-0');
+            DOM.quickActions.classList.add('pt-2');
+        }
+
+        function showTyping(userMsg = "") {
+            const id = 'typing-' + Date.now();
+            const wrapper = document.createElement('div');
+            wrapper.id = id;
+            wrapper.className = 'flex gap-3 mb-6 max-w-[90%] animate-bubble-in w-full';
+            
+            const msgLower = userMsg.toLowerCase();
+            const situationalKeywords = ['feel', 'overwhelmed', 'exhausted', 'burnout', 'stress', 'anxious', 'heavy', 'tired', 'help', 'pushing', 'stop', 'pressure', 'hard', 'struggling', 'pain'];
+            
+            const isSituation = userMsg.length > 60 || situationalKeywords.some(kw => msgLower.includes(kw));
+
+            let typingContent = '';
+
+            if (isSituation) {
+                typingContent = `
+                    <div id="${id}-text" class="text-[12px] text-Tatva-gold/80 font-medium transition-opacity duration-300">Understanding your situation...</div>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 0ms"></div>
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 200ms"></div>
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 400ms"></div>
+                    </div>
+                `;
+            } else {
+                typingContent = `
+                    <div class="flex items-center gap-1.5 h-full">
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 0ms"></div>
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 200ms"></div>
+                        <div class="w-1.5 h-1.5 bg-Tatva-gold/60 rounded-full animate-typing" style="animation-delay: 400ms"></div>
+                    </div>
+                `;
+            }
+
+            wrapper.innerHTML = `
+                <div class="w-8 h-8 rounded-full border border-Tatva-border flex-shrink-0 flex items-center justify-center text-Tatva-gold/40 mt-1 bg-Tatva-bg shadow-[0_0_8px_rgba(196,164,98,0.05)]">
+                    ${ICONS.bot}
+                </div>
+                <div class="bg-Tatva-surface border border-Tatva-border rounded-[16px] px-5 py-3.5 flex flex-col justify-center gap-1.5 ${isSituation ? 'min-w-[220px]' : 'h-[52px]'}">
+                    ${typingContent}
+                </div>
+            `;
+            
+            DOM.messages.appendChild(wrapper);
+            scrollToBottom();
+
+            if (isSituation) {
+                const loadingMessages = [
+                    "Understanding your situation...",
+                    "Looking into your energy needs...",
+                    "Personalizing the best products for you...",
+                    "Preparing guidance..."
+                ];
+                
+                let messageIndex = 0;
+                const textElement = document.getElementById(`${id}-text`);
+                
+                const intervalId = setInterval(() => {
+                    messageIndex = (messageIndex + 1) % loadingMessages.length;
+                    if (textElement) {
+                        textElement.style.opacity = '0';
+                        setTimeout(() => {
+                            if (textElement) {
+                                textElement.textContent = loadingMessages[messageIndex];
+                                textElement.style.opacity = '1';
+                            }
+                        }, 300);
+                    } else {
+                        clearInterval(intervalId);
+                    }
+                }, 2500);
+
+                wrapper.dataset.intervalId = intervalId;
+            }
+
+            return id;
+        }
+
+        function removeTyping(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                if (el.dataset.intervalId) {
+                    clearInterval(el.dataset.intervalId);
+                }
+                el.remove();
+            }
+        }
+
+        function addUserMessage(text) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex justify-end mb-6 w-full animate-bubble-in';
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bg-Tatva-user text-white rounded-2xl px-5 py-3.5 text-[14px] leading-relaxed max-w-[85%] font-medium whitespace-pre-wrap break-words shadow-lg';
+            bubble.textContent = text;
+            
+            wrapper.appendChild(bubble);
+            DOM.messages.appendChild(wrapper);
+            scrollToBottom();
+        }
+
+        function addBotMessage(text, options = {}, mode = 'structured') {
+            
+            if (mode === 'natural' || !state.isOpen) {
+                playZenChime(); 
+            }
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex gap-3 mb-6 max-w-[90%] animate-bubble-in';
+            
+            const processedText = transformText(text);
+
+            const avatar = document.createElement('div');
+            avatar.className = 'w-8 h-8 rounded-full border border-Tatva-gold/30 flex-shrink-0 flex items-center justify-center text-Tatva-gold/70 mt-1 bg-Tatva-surface shadow-[0_0_8px_rgba(196,164,98,0.05)]';
+            avatar.innerHTML = ICONS.bot;
+            wrapper.appendChild(avatar);
+
+            const bubbleCont = document.createElement('div');
+            bubbleCont.className = 'flex flex-col gap-3 w-full max-w-full';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bg-Tatva-surface border border-Tatva-border rounded-2xl px-5 py-4 text-[14px] leading-relaxed text-Tatva-text shadow-sm overflow-hidden';
+            
+            const textNode = document.createElement('div');
+            textNode.className = 'whitespace-pre-wrap break-words';
+            textNode.innerHTML = processedText;
+            bubble.appendChild(textNode);
+
+            if (options.pills && options.pills.length > 0) {
+                const pillRow = document.createElement('div');
+                pillRow.className = 'flex flex-wrap gap-2 Tatva-pill-row mt-4 w-full';
+                options.pills.forEach(pillText => {
+                    const btn = document.createElement('button');
+                    btn.className = 'Tatva-pill flex items-center gap-1.5 px-3 py-1.5 border border-Tatva-gold/30 rounded-xl text-[12px] text-Tatva-gold cursor-pointer hover:bg-Tatva-gold/10 hover:border-Tatva-gold bg-transparent outline-none font-medium max-w-[95%] text-left whitespace-normal leading-snug break-words';
+                    btn.innerHTML = `<span class="opacity-80 flex-shrink-0">${getIconForText(pillText)}</span> <span>${pillText}</span>`;
+                    btn.onclick = () => {
+                        pillRow.classList.add('answered');
+                        handlePillClick(pillText);
+                    };
+                    pillRow.appendChild(btn);
+                });
+                bubble.appendChild(pillRow);
+            }
+            
+            bubbleCont.appendChild(bubble);
+            wrapper.appendChild(bubbleCont);
+            DOM.messages.appendChild(wrapper);
+            
+            let bottomActions = [];
+            if (options.nav && options.nav.length > 0) bottomActions = bottomActions.concat(options.nav);
+            if (options.related && options.related.length > 0) bottomActions = bottomActions.concat(options.related);
+            
+            renderQuickActions(bottomActions);
+
+            scrollToBottom();
+            if (!state.isOpen) DOM.badge.classList.remove('hidden');
+        }
+
+        function addEscalationCard(type = 'escalation', message) {
+            if (!state.isOpen) playZenChime(); 
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex gap-3 mb-6 max-w-[90%] animate-bubble-in w-full';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'w-8 h-8 rounded-full border border-Tatva-border flex-shrink-0 flex items-center justify-center text-Tatva-text-dim mt-1 bg-Tatva-surface';
+            avatar.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+            wrapper.appendChild(avatar);
+
+            const tktMatch = message.match(/Reference:\s*(TKT-[A-Z0-9]+)/);
+            const ticketId = tktMatch ? tktMatch[1] : 'TKT-' + Math.floor(100000 + Math.random() * 900000);
+            let cleanMessage = message.replace(/Reference:\s*TKT-[A-Z0-9]+/g, '').trim();
+            
+            const card = document.createElement('div');
+            card.className = 'bg-Tatva-escalation border border-Tatva-gold/20 rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden w-full';
+            
+            card.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="text-[10px] tracking-[2px] text-Tatva-gold uppercase font-medium font-brand">Support Connected</div>
+                    <div class="bg-black/40 text-Tatva-gold-dim font-mono text-[10px] px-2 py-0.5 rounded border border-black/50">${ticketId}</div>
+                </div>
+                <div class="text-[13px] text-Tatva-text leading-relaxed">
+                    ${transformText(cleanMessage)}
+                </div>
+            `;
+            
+            wrapper.appendChild(card);
+            DOM.messages.appendChild(wrapper);
+            renderQuickActions([]);
+            scrollToBottom();
+            disableInput("Our team will reach out to you shortly.");
+        }
+
+        function addCSATCard() {
+            if (!state.isOpen) playZenChime(); 
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex gap-3 mb-6 max-w-[90%] animate-bubble-in w-full';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'w-8 h-8 rounded-full border border-Tatva-gold/30 flex-shrink-0 flex items-center justify-center text-Tatva-gold/70 mt-1 bg-Tatva-surface';
+            avatar.innerHTML = ICONS.bot;
+            wrapper.appendChild(avatar);
+
+            const card = document.createElement('div');
+            card.id = "csat-inner";
+            card.className = 'bg-Tatva-surface border border-Tatva-border rounded-2xl px-5 py-5 w-full flex flex-col items-center justify-center gap-3 transition-all duration-300';
+            
+            card.innerHTML = `
+                <div id="csat-prompt" class="text-[13px] text-Tatva-text text-center font-medium font-body">Before you go — how was your experience?</div>
+                <div id="csat-stars" class="flex gap-2 Tatva-star-container cursor-pointer py-1 mt-1">
+                    ${[1,2,3,4,5].map(i => `<span class="Tatva-star text-[28px] text-Tatva-border transition-all leading-none" data-val="${i}">★</span>`).join('')}
+                </div>
+            `;
+            
+            wrapper.appendChild(card);
+            DOM.messages.appendChild(wrapper);
+            renderQuickActions([]);
+            scrollToBottom();
+
+            const stars = wrapper.querySelectorAll('.Tatva-star');
+            const inner = wrapper.querySelector('#csat-inner');
+            let locked = false;
+
+            stars.forEach(star => {
+                star.addEventListener('click', function() {
+                    if(locked) return;
+                    locked = true;
+                    
+                    const rating = this.dataset.val;
+                    stars.forEach((s, idx) => {
+                        if(idx < rating) s.classList.add('locked');
+                        else s.style.opacity = '0.2';
+                    });
+                    
+                    setTimeout(() => {
+                        inner.innerHTML = `
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="text-Tatva-gold text-[20px] tracking-widest">★★★★★</div>
+                                <div class="text-[13px] text-Tatva-gold-dim font-body">Thank you for sharing your journey.</div>
+                            </div>
+                        `;
+                        submitToBackend(`${rating} Stars`);
+                    }, 500);
+                });
+            });
+        }
+
+        function disableInput(reasonText) {
+            state.inputDisabled = true;
+            DOM.input.disabled = true;
+            DOM.sendBtn.disabled = true;
+            DOM.input.placeholder = reasonText;
+            DOM.input.value = "";
+            DOM.input.dispatchEvent(new Event('input')); 
+        }
+
+        function enableInput() {
+            if (state.csatDone || (state.inputDisabled && DOM.input.placeholder.includes("Our team"))) return;
+            state.inputDisabled = false;
+            DOM.input.disabled = false;
+            DOM.sendBtn.disabled = false;
+            DOM.input.placeholder = "Describe your situation or ask a question...";
+            if(state.isOpen) DOM.input.focus();
+        }
+
+        function handleRateLimit() {
+            let seconds = 7;
+            disableInput(`Please wait (${seconds}s)...`);
+            const timer = setInterval(() => {
+                seconds--;
+                if(seconds > 0) {
+                    DOM.input.placeholder = `Please wait (${seconds}s)...`;
+                } else {
+                    clearInterval(timer);
+                    enableInput();
+                }
+            }, 1000);
+        }
+
+        function handlePillClick(text) {
+            addUserMessage(text);
+            processUserMessage(text);
+        }
+
+        function handleSend() {
+            const val = DOM.input.value.trim();
+            if (!val || state.inputDisabled) return;
+            
+            DOM.input.value = '';
+            DOM.input.dispatchEvent(new Event('input'));
+            
+            addUserMessage(val);
+            
+            if (!state.isOnline) {
+                state.messageQueue.push(val);
+                return;
+            }
+            processUserMessage(val);
+        }
+
+        function processQueue() {
+            if (state.messageQueue.length > 0) {
+                const msg = state.messageQueue.shift();
+                processUserMessage(msg);
+            }
+        }
+
+        async function startSession(retry = 0) {
+            state.isLoading = true;
+            const typingId = showTyping(""); 
+            
+            try {
+                const res = await fetch(`${CONFIG.apiBase}/session/start`, {
+                    method: 'POST',
+                    headers: { 'X-Widget-Key': CONFIG.frontendKey }
+                });
+                
+                if (!res.ok) throw new Error('Session failed');
+                const data = await res.json();
+                
+                state.sessionId = data.session_id;
+                state.sessionToken = data.session_token;
+                state.retryCount = 0;
+                
+                removeTyping(typingId);
+                state.isLoading = false;
+
+                const parsed = parseBackendResponse(data.opening_message);
+                addBotMessage(parsed.text, { pills: parsed.options.pills }, 'structured');
+                
+            } catch (err) {
+                removeTyping(typingId);
+                state.isLoading = false;
+                if (retry < CONFIG.sessionRetries) {
+                    setTimeout(() => startSession(retry + 1), 1000);
+                } else {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'flex gap-3 mb-6 max-w-[90%] animate-bubble-in text-Tatva-text text-[14px] bg-Tatva-surface p-4 rounded-2xl border border-Tatva-border';
+                    wrapper.textContent = "I seem to be having trouble connecting to your energy. Please reach us at info@adishila.in in the meantime.";
+                    DOM.messages.appendChild(wrapper);
+                    scrollToBottom();
+                }
+            }
+        }
+
+        async function processUserMessage(userMsg) {
+            DOM.quickActions.classList.add('opacity-0'); 
+            
+            if (state.csatPending) {
+                const msgLower = userMsg.toLowerCase();
+                if (msgLower.includes('no') || msgLower.includes('all set')) {
+                    state.csatPending = false;
+                    state.csatDone = true;
+                    addBotMessage("Wonderful. It is always a pleasure to guide you towards balance.", {}, 'structured');
+                    setTimeout(addCSATCard, 600);
+                    return; 
+                } else {
+                    state.csatPending = false;
+                }
+            }
+            await submitToBackend(userMsg);
+        }
+
+        async function submitToBackend(userMsg, isRetry = false) {
+            state.isLoading = true;
+            const typingId = showTyping(userMsg);
+
+            const delayPromise = new Promise(r => setTimeout(r, Math.floor(Math.random() * (CONFIG.maxTypingMs - CONFIG.minTypingMs + 1) + CONFIG.minTypingMs)));
+
+            try {
+                const res = await fetch(`${CONFIG.apiBase}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Widget-Key': CONFIG.frontendKey,
+                        'X-Session-Token': state.sessionToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: userMsg, session_id: state.sessionId })
+                });
+
+                await delayPromise;
+                removeTyping(typingId);
+                state.isLoading = false;
+
+                if (res.status === 401) {
+                    if (!isRetry && state.retryCount < CONFIG.sessionRetries) {
+                        state.retryCount++;
+                        await startSession();
+                        return submitToBackend(userMsg, true);
+                    }
+                    addBotMessage("Your session naturally concluded. Please refresh the page to start a new journey together.", {}, 'structured');
+                    return;
+                }
+                if (res.status === 429) {
+                    handleRateLimit();
+                    return;
+                }
+                if (res.status >= 500) {
+                    addBotMessage("My energies are momentarily disrupted. Please try again or reach our support team at info@adishila.in.", {}, 'structured');
+                    return;
+                }
+
+                const data = await res.json();
+                state.retryCount = 0;
+                
+                if (data.mode === 'csat') {
+                    state.csatPending = true;
+                    addBotMessage("I am so glad to hear that! Is there anything else I can guide you with today?", {
+                        pills: ["Yes, I need more guidance", "No, I'm at peace for now"]
+                    }, 'structured');
+                } else if (data.mode === 'csat_complete') {
+                    addBotMessage(data.response, {}, data.mode);
+                } else if (data.mode === 'escalation' || data.mode === 'fallback') {
+                    addEscalationCard(data.mode, data.response);
+                } else {
+                    const parsed = parseBackendResponse(data.response);
+                    addBotMessage(parsed.text, {
+                        pills: parsed.options.pills,
+                        nav: parsed.options.nav,
+                        related: parsed.options.related
+                    }, data.mode);
+                }
+
+            } catch (err) {
+                await delayPromise;
+                removeTyping(typingId);
+                state.isLoading = false;
+                addBotMessage("Connection interrupted. Your message will be sent to my awareness when the connection is restored.", {}, 'structured');
+            }
+        }
+    </script>
+</body>
+</html>
