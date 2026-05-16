@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+google-genai
+cachetools
+rapidfuzz
+slowapi
+lingua-language-detector
+python-dotenv
