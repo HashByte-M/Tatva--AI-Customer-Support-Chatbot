@@ -192,12 +192,25 @@ def calculate_frustration_score(msg: str) -> int:
     if "!!!" in msg or (msg.isupper() and len(msg) > 10): score += 1
     return score
 
-CSAT_TRIGGERS = ["thank you", "thanks", "got it", "okay", "ok", "sure", "noted", "dhanyawad", "awesome", "perfect", "helpful"]
+CSAT_TRIGGERS = [
+    "thank you", "thanks", "thank u", "thankyou",
+    "dhanyawad", "shukriya", "bahut shukriya",
+    "that helped", "that was helpful", "very helpful",
+    "got everything i need", "all good now", "problem solved",
+    "appreciate it", "appreciate your help",
+    "you've been great", "youve been great",
+    "wonderful", "perfect", "awesome", "excellent"
+]
 
 def should_prompt_csat(msg: str, state: SessionState) -> bool:
-    if state.csat_prompted or state.turn_count < 2: return False
-    msg_lower = msg.lower()
-    return any(re.search(rf'\b{t}\b', msg_lower) for t in CSAT_TRIGGERS)
+    if state.csat_prompted or state.turn_count < 3: return False
+    msg_lower = msg.lower().strip()
+    # Only trigger on short gratitude messages (≤8 words) to avoid false positives
+    # on messages like "ok, what products do you have?" or "sure, tell me more"
+    word_count = len(msg_lower.split())
+    if word_count > 8:
+        return False
+    return any(re.search(rf'\b{re.escape(t)}\b', msg_lower) for t in CSAT_TRIGGERS)
 
 def is_match(user_msg: str, target_phrases: List[str]) -> bool:
     user_msg_clean = user_msg.strip()
@@ -326,7 +339,7 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
         if is_match(msg, ["1", "kavach shield", "kavach"]): return "prod_kavach"
         if is_match(msg, ["2", "pyramid", "vastu pyramid"]): return "prod_pyramid"
         if is_match(msg, ["3", "mala", "raksha mala"]): return "prod_mala"
-        if msg in ["4"] or is_match(msg, ["water set", "amrit jal"]): return "prod_water"
+        if is_match(msg, ["4", "water set", "amrit jal"]): return "prod_water"
         if is_match(msg, ["5", "trishul", "trishul shield"]): return "prod_trishul"
         if is_match(msg, ["6", "pendant", "om pendant"]): return "prod_pendant"
 
@@ -414,7 +427,8 @@ async def start_session(request: Request, api_key: str = Security(verify_fronten
 async def chat_endpoint(
     request: Request, 
     body: ChatRequest, 
-    x_session_token: str = Header(..., description="Session token initialized from /session/start")
+    x_session_token: str = Header(..., description="Session token initialized from /session/start"),
+    api_key: str = Security(verify_frontend_key)
 ):
     start_time = time.time()
     
@@ -435,13 +449,18 @@ async def chat_endpoint(
         if state.csat_awaiting:
             state.csat_awaiting = False
             log_analytics(ChatEvent("csat_rating", state.session_id, "csat", "feedback", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
-            return {"mode": "csat_complete", "response": "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n⌂ Main Menu"}
+            return {"mode": "csat_complete", "response": "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n← Back | ⌂ Main Menu"}
 
         if check_prompt_injection(body.message):
             return {"mode": "structured", "response": "I am here specifically to assist with your AdiShila wellness journey and orders. How may I lovingly guide you today?\n\n← Back | ⌂ Main Menu"}
 
         state.language = detect_language_safe(body.message)
-        state.frustration_signals += calculate_frustration_score(body.message)
+        turn_frustration = calculate_frustration_score(body.message)
+        state.frustration_signals += turn_frustration
+        # Decay: calm turns gradually reduce the frustration counter so one
+        # venting message doesn't permanently lock the user into escalation.
+        if turn_frustration == 0 and state.frustration_signals > 0:
+            state.frustration_signals = max(0, state.frustration_signals - 1)
 
         if state.frustration_signals >= 2:
             ticket_id = generate_ticket_id()
