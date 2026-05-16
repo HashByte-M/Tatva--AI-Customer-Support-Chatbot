@@ -227,7 +227,7 @@ STATIC_RESPONSES = {
     "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
     "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order\n\n← Back | ⌂ Main Menu",
     "menu_products": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Trishul Shield\n6. Pendant\n\n← Back | ⌂ Main Menu",
-    "menu_recommendations": "1. EMF Protection\n2. Vastu\n3. Meditation\n4. Gifting\n5. Office Setup\n6. Daily Wear\n\n← Back | ⌂ Main Menu",
+    "menu_recommendations": "True well-being relies on maintaining subtle energetic equilibrium across all fields of our daily life. Whether you are seeking protection against modern electromagnetic fatigue or hoping to ground the structural alignment of an environment, I can isolate tools tailored to your layout.\n\nWhich area of your lifestyle environment needs balance today?\n\n1. EMF Protection\n2. Vastu\n3. Meditation\n4. Gifting\n5. Office Setup\n6. Daily Wear",    
     "menu_wholesale": "1. Pricing & MOQ\n2. Samples\n3. Margins\n4. Shipping\n5. Partner Setup\n\n← Back | ⌂ Main Menu",
     "menu_usage": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Pendant\n6. Trishul Shield\n\n← Back | ⌂ Main Menu",
     "menu_faq": "1. Why AdiShila?\n2. Authenticity\n3. How it Works\n4. Shipping & Returns\n\n← Back | ⌂ Main Menu",
