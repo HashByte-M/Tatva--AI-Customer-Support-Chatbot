@@ -476,7 +476,7 @@ async def chat_endpoint(
                 suggestions = " | ".join(f"**{format_suggestion(r)}**" for r in RELATED[intent])
                 base_response += f"\n\n─────\nExplore further on your wellness journey:\n{suggestions}"
             
-            if "menu_" not in intent:
+            if "menu_main" not in intent:
                 base_response += "\n\n← Back | ⌂ Main Menu"
 
             log_analytics(ChatEvent("message", state.session_id, "structured", intent, state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
