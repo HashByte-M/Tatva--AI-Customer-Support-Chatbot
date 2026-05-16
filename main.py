@@ -87,7 +87,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://tatva-chatbot.netlify.app","https://adishila.in","adishila.in"], 
+    allow_origins=["https://tatva-chatbot.netlify.app", "https://adishila.in", "adishila.in"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,7 +100,6 @@ if not gemini_key:
 
 ai_client = genai.Client(api_key=gemini_key)
 
-# Included Russian Language Support in Detection Engine
 lang_detector = LanguageDetectorBuilder.from_languages(
     Language.ENGLISH, Language.HINDI, Language.BENGALI, 
     Language.MARATHI, Language.TAMIL, Language.TELUGU, 
@@ -170,9 +169,9 @@ def generate_ticket_id() -> str:
 
 def detect_language_safe(text: str) -> str:
     try:
-        lang = lang_detector.detect_language_of(text)
-        if lang == Language.HINDI: return "hi"
-        if lang == Language.RUSSIAN: return "ru"
+        pointer_lang = lang_detector.detect_language_of(text)
+        if pointer_lang == Language.HINDI: return "hi"
+        if pointer_lang == Language.RUSSIAN: return "ru"
         hindi_markers = {"kya", "mujhe", "mera", "hai", "kar", "nahi", "kyun", "kaise", "kab"}
         words = set(re.findall(r"[a-z]+", text.lower()))
         if words.intersection(hindi_markers): return "hinglish"
@@ -222,15 +221,15 @@ def format_suggestion(s: str) -> str:
     formatted = s.replace('prod_', '').replace('rec_', '').replace('faq_', '').replace('_', ' ').title()
     return formatted.replace('Emf', 'EMF').replace('Moq', 'MOQ').replace('Faq', 'FAQ')
 
-# --- ENRICHED PERSUASIVE STATIC RESPONSES (SIMPLIFIED MENUS) ---
+# --- CLEANED FIXED RESPONSES (TRAILING STRINGS REMOVED FROM INTERNAL MAPS) ---
 STATIC_RESPONSES = {
     "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
-    "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order\n\n← Back | ⌂ Main Menu",
-    "menu_products": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Trishul Shield\n6. Pendant\n\n← Back | ⌂ Main Menu",
+    "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order",
+    "menu_products": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Trishul Shield\n6. Pendant",
     "menu_recommendations": "True well-being relies on maintaining subtle energetic equilibrium across all fields of our daily life. Whether you are seeking protection against modern electromagnetic fatigue or hoping to ground the structural alignment of an environment, I can isolate tools tailored to your layout.\n\nWhich area of your lifestyle environment needs balance today?\n\n1. EMF Protection\n2. Vastu\n3. Meditation\n4. Gifting\n5. Office Setup\n6. Daily Wear",    
-    "menu_wholesale": "1. Pricing & MOQ\n2. Samples\n3. Margins\n4. Shipping\n5. Partner Setup\n\n← Back | ⌂ Main Menu",
-    "menu_usage": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Pendant\n6. Trishul Shield\n\n← Back | ⌂ Main Menu",
-    "menu_faq": "1. Why AdiShila?\n2. Authenticity\n3. How it Works\n4. Shipping & Returns\n\n← Back | ⌂ Main Menu",
+    "menu_wholesale": "1. Pricing & MOQ\n2. Samples\n3. Margins\n4. Shipping\n5. Partner Setup",
+    "menu_usage": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Pendant\n6. Trishul Shield",
+    "menu_faq": "1. Why AdiShila?\n2. Authenticity\n3. How it Works\n4. Shipping & Returns",
     
     "track_order": "I understand you are eager to receive your wellness tools. To check the journey of your order, please email info@adishila.in with your Order ID, Full Name, and Phone Number. Our support family will look into it right away.",
     "return_refund": "Your peace of mind is our priority. To request a return or refund, simply email info@adishila.in with your Order ID and your reason. We lovingly process these reviews within 48 hours.",
@@ -439,7 +438,7 @@ async def chat_endpoint(
             return {"mode": "csat_complete", "response": "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n⌂ Main Menu"}
 
         if check_prompt_injection(body.message):
-            return {"mode": "structured", "response": "I am here specifically to assist with your AdiShila wellness journey and orders. How may I lovingly guide you today?"}
+            return {"mode": "structured", "response": "I am here specifically to assist with your AdiShila wellness journey and orders. How may I lovingly guide you today?\n\n← Back | ⌂ Main Menu"}
 
         state.language = detect_language_safe(body.message)
         state.frustration_signals += calculate_frustration_score(body.message)
@@ -476,6 +475,7 @@ async def chat_endpoint(
                 suggestions = " | ".join(f"**{format_suggestion(r)}**" for r in RELATED[intent])
                 base_response += f"\n\n─────\nExplore further on your wellness journey:\n{suggestions}"
             
+            # UNIFIED INJECTION CONTROL: Appends navigational markers to all non-root menus safely
             if "menu_main" not in intent:
                 base_response += "\n\n← Back | ⌂ Main Menu"
 
