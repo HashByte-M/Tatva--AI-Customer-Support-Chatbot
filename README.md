@@ -778,4 +778,3 @@ None. The HTML file uses:
 
 ---
 
-*This README was generated from direct analysis of `main.py` and `adishila_chatbot_v3.html`. All line number references are approximate and may shift if the source files are edited.*
