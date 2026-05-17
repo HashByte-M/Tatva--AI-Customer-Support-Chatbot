@@ -8,6 +8,8 @@ import logging
 import hashlib
 import hmac
 import secrets
+import string
+import random
 import threading
 import urllib.request
 from logging.handlers import RotatingFileHandler
@@ -22,7 +24,6 @@ from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# --- NEW GOOGLE GENAI SDK ---
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -34,7 +35,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from lingua import Language, LanguageDetectorBuilder
 
-# --- CONFIGURATION & SECURITY ---
+
 FRONTEND_SECRET_KEY = os.getenv("FRONTEND_SECRET_KEY")
 if not FRONTEND_SECRET_KEY:
     raise RuntimeError("CRITICAL: FRONTEND_SECRET_KEY environment variable is required.")
@@ -43,7 +44,7 @@ ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY")
 if not ADMIN_SECRET_KEY:
     raise RuntimeError("CRITICAL: ADMIN_SECRET_KEY environment variable is required.")
 
-TOKEN_WINDOW_SECONDS = 3600  # Tokens rotate every hour
+TOKEN_WINDOW_SECONDS = 3600  
 
 def generate_widget_token() -> str:
     window = int(time.time()) // TOKEN_WINDOW_SECONDS
@@ -81,7 +82,7 @@ def verify_admin_key(api_key: str = Security(admin_key_header)) -> str:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin key.")
     return api_key
 
-# --- LOGGING & ANALYTICS ---
+
 logger = logging.getLogger("adishila_support")
 logger.setLevel(logging.INFO)
 log_handler = RotatingFileHandler("server.log", maxBytes=5*1024*1024, backupCount=3)
@@ -114,7 +115,7 @@ def log_analytics(event: ChatEvent):
     except Exception as e:
         logger.error(f"Failed to write analytics: {e}")
 
-# --- APP SETUP & RATE LIMITING ---
+
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="AdiShila Support API Enterprise")
 app.state.limiter = limiter
@@ -128,7 +129,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- AI SETUP (NEW SDK) ---
 gemini_key = os.getenv("GEMINI_API_KEY")
 if not gemini_key:
     raise RuntimeError("CRITICAL: GEMINI_API_KEY environment variable is required.")
@@ -175,7 +175,6 @@ chat_config = types.GenerateContentConfig(
     system_instruction=system_instruction,
 )
 
-# --- STATE MANAGEMENT ---
 sessions = TTLCache(maxsize=5000, ttl=3600)
 sessions_lock = threading.Lock()
 ai_response_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
@@ -198,7 +197,6 @@ class SessionState:
     last_activity: float = field(default_factory=time.time)
     chat: Any = None 
     
-    # Callback Flow State
     chat_history: List[dict] = field(default_factory=list)
     in_callback_flow: bool = False
     callback_step: Optional[str] = None
@@ -208,14 +206,25 @@ class SessionState:
     def session_age_seconds(self) -> float:
         return time.time() - self.created_at
 
-# --- SCHEMAS ---
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     session_id: str = Field(..., pattern=r'^[a-zA-Z0-9_-]{8,64}$')
 
-# --- HELPER FUNCTIONS ---
+def base_36_encode(number: int) -> str:
+    alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if number == 0:
+        return alphabet[0]
+    base36 = ""
+    while number:
+        number, i = divmod(number, 36)
+        base36 = alphabet[i] + base36
+    return base36
+
 def generate_ticket_id() -> str:
-    return f"TKT-{uuid.uuid4().hex[:8].upper()}"
+    timestamp_part = base_36_encode(int(time.time() * 1000))[-5:].upper()
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    return f"TKT-{timestamp_part}-{random_part}"
 
 def detect_language_safe(text: str) -> str:
     try:
@@ -384,7 +393,7 @@ RELATED = {
     "rec_vastu": ["prod_pyramid", "prod_lingam"]
 }
 
-# --- SMART DETERMINISTIC ROUTER ---
+
 def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]:
     msg = raw_msg.strip().lower()
     ctx = state.current_menu
@@ -537,7 +546,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
 
     return None
 
-# --- API ENDPOINTS ---
 
 @app.get("/health")
 async def health_check():
@@ -665,23 +673,29 @@ async def chat_endpoint(
         if turn_frustration == 0 and state.frustration_signals > 0:
             state.frustration_signals = max(0, state.frustration_signals - 1)
 
+        # --------------------------------------------------------
+        # FIX 1: Add ticket_id to callback_data so webhook sees it
+        # --------------------------------------------------------
         if state.frustration_signals >= 2:
-            ticket_id = generate_ticket_id()
-            response_text = (
-                "I deeply understand this has been a frustrating experience, and I am so sorry you have had to go through this.\n\n"
-                "I am immediately connecting you with our human support team to resolve this right away:\n\n"
-                "📧 info@adishila.in\n💬 WhatsApp: +91 86301 79867\n\n"
-                f"Reference: {ticket_id}"
-            )
-            asyncio.create_task(asyncio.to_thread(send_webhook, state, "escalation"))
-            return finalize_response(state, "escalation", response_text)
-
-        # --- OPT-IN CALLBACK FLOW ---
+            if not state.callback_data.get("ticket_id"):
+                ticket_id = generate_ticket_id()
+                state.callback_data["ticket_id"] = ticket_id
+                response_text = (
+                    "I deeply understand this has been a frustrating experience, and I am so sorry you have had to go through this.\n\n"
+                    "I am immediately connecting you with our human support team to resolve this right away:\n\n"
+                    "📧 info@adishila.in\n💬 WhatsApp: +91 86301 79867\n\n"
+                    f"Reference: {ticket_id}"
+                )
+                asyncio.create_task(asyncio.to_thread(send_webhook, state, "escalation"))
+                return finalize_response(state, "escalation", response_text)
+            else:
+                ticket_id = state.callback_data["ticket_id"]
+                return finalize_response(state, "escalation", f"Our human support team has been notified. Please reach out to info@adishila.in for immediate assistance.\n\nReference: {ticket_id}")
+        
         if state.in_callback_flow:
             msg = body.message.strip()
             msg_lower = msg.lower()
             
-            # Allow user to exit the flow respectfully
             if msg_lower in ["cancel", "stop", "nevermind", "skip", "go back"]:
                 state.in_callback_flow = False
                 state.callback_step = None
@@ -705,14 +719,14 @@ async def chat_endpoint(
             elif state.callback_step == "reason":
                 state.callback_data["reason"] = msg
                 
-                # Generate Ticket ID
-                ticket_id = generate_ticket_id()
-                state.callback_data["ticket_id"] = ticket_id
-                
+                # If they didn't get one from an escalation, generate one here
+                if not state.callback_data.get("ticket_id"):
+                    state.callback_data["ticket_id"] = generate_ticket_id()
+                    
+                ticket_id = state.callback_data["ticket_id"]
                 state.in_callback_flow = False
                 state.callback_step = None
                 
-                # Trigger the webhook asynchronously
                 asyncio.create_task(asyncio.to_thread(send_webhook, state, "callback_requested"))
                 
                 state.csat_prompted = True
@@ -726,7 +740,6 @@ async def chat_endpoint(
 
         intent = get_deterministic_intent(body.message, state)
         
-        # Intercept Intent to Start Callback Flow
         if intent == "start_callback_flow":
             state.in_callback_flow = True
             state.callback_step = "name"
