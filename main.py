@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import secrets
 import threading
+import urllib.request
 from logging.handlers import RotatingFileHandler
 from collections import deque
 from typing import Optional, List, Set, Any, Tuple
@@ -196,6 +197,12 @@ class SessionState:
     created_at: float = field(default_factory=time.time)
     last_activity: float = field(default_factory=time.time)
     chat: Any = None 
+    
+    # Callback Flow State
+    chat_history: List[dict] = field(default_factory=list)
+    in_callback_flow: bool = False
+    callback_step: Optional[str] = None
+    callback_data: dict = field(default_factory=dict)
 
     @property
     def session_age_seconds(self) -> float:
@@ -262,7 +269,6 @@ def format_suggestion(s: str) -> str:
     formatted = s.replace('prod_', '').replace('rec_', '').replace('faq_', '').replace('_', ' ').title()
     return formatted.replace('Emf', 'EMF').replace('Moq', 'MOQ').replace('Faq', 'FAQ')
 
-# --- UPGRADE 1: WORD-COUNT HEURISTIC MATCHER ---
 def is_match(user_msg: str, target_phrases: List[str]) -> bool:
     user_msg_clean = user_msg.strip().lower()
     word_count = len(user_msg_clean.split())
@@ -276,19 +282,48 @@ def is_match(user_msg: str, target_phrases: List[str]) -> bool:
             if fuzz.ratio(phrase_lower, user_msg_clean) >= 80:
                 return True
                 
-        # Only allow aggressive fuzzy matching for short commands (menus, clicks)
         if word_count <= 4: 
             if fuzz.token_set_ratio(phrase_lower, user_msg_clean) >= 85:
                 return True
         else:
-            # If it's a long sentence, demand strict similarity to avoid false positives
             if fuzz.ratio(phrase_lower, user_msg_clean) >= 90:
                 return True
     return False
 
-# --- STATIC RESPONSES (Truncated for brevity, kept exactly as requested previously) ---
+def send_webhook(state: SessionState, trigger_event: str):
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if not webhook_url:
+        return
+    payload = {
+        "event": trigger_event,
+        "session_id": state.session_id,
+        "callback_data": state.callback_data,
+        "frustration_score": state.frustration_signals,
+        "turn_count": state.turn_count,
+        "language": state.language,
+        "chat_history": state.chat_history
+    }
+    try:
+        req = urllib.request.Request(
+            webhook_url, 
+            data=json.dumps(payload).encode('utf-8'), 
+            headers={'Content-Type': 'application/json', 'User-Agent': 'TatvaBot/1.0'}
+        )
+        urllib.request.urlopen(req, timeout=5)
+        logger.info(f"Webhook successfully sent for event '{trigger_event}' on session {state.session_id}")
+    except Exception as e:
+        logger.error(f"Webhook delivery failed for {trigger_event}: {e}")
+
+def finalize_response(state: SessionState, mode: str, response_text: str) -> dict:
+    """Centralizes response appending and sending to frontend."""
+    state.chat_history.append({"role": "bot", "text": response_text})
+    if len(state.chat_history) > 40:
+        state.chat_history = state.chat_history[-40:]
+    return {"mode": mode, "response": response_text}
+
+# --- STATIC RESPONSES ---
 STATIC_RESPONSES = {
-    "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
+    "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n8. Request a Callback\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
     "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order",
     "menu_products": "1. Kavach Shield\n2. Kali Yuga Lingam\n3. Vastu Pyramid\n4. Raksha Mala\n5. Amrit Jal Set\n6. Trishul Shield\n7. OM Pendant",
     "menu_recommendations": "True well-being relies on maintaining subtle energetic equilibrium across all fields of our daily life. Whether you are seeking protection against modern electromagnetic fatigue or hoping to ground the structural alignment of an environment, I can isolate tools tailored to your layout.\n\nWhich area of your lifestyle environment needs balance today?\n\n1. EMF Protection\n2. Vastu\n3. Meditation\n4. Gifting\n5. Office Setup\n6. Daily Wear",    
@@ -355,7 +390,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
     msg = raw_msg.strip().lower()
     ctx = state.current_menu
 
-    # --- UPGRADE 2: NEGATION TRAPPING ---
     negation_words = ["not", "other than", "besides", "instead of", "except", "don't want", "no"]
     if any(neg in msg for neg in negation_words):
         if any(prod in msg for prod in ["kavach", "shield", "trishul"]):
@@ -368,7 +402,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
             state.current_menu = "recommendations"
             return "rec_daily"
 
-    # --- UPGRADE 3: CONTEXTUAL MICRO-INTENTS ---
     if state.nav_history:
         last_intent = state.nav_history[-1][0]
         
@@ -401,7 +434,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
             if is_match(msg, ["how to use", "wear", "instructions"]): return "usage_pendant"
 
 
-    # Standard Navigation
     if is_match(msg, ["back", "← back", "go back", "previous"]):
         if len(state.nav_history) > 1:
             state.nav_history.pop() 
@@ -420,7 +452,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
     if is_match(msg, ["human", "agent", "talk to someone", "real person", "contact support", "support"]):
         return "contact_support"
 
-    # --- UPGRADE 4: LOCAL SYNONYM EXPANSION IN STRICT & GLOBAL ROUTING ---
     if ctx == "main":
         if is_match(msg, ["1", "orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
         if is_match(msg, ["2", "products", "wellness products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
@@ -429,6 +460,7 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
         if is_match(msg, ["5", "how to use", "product usage", "usage", "guidance"]): state.current_menu = "usage"; return "menu_usage"
         if is_match(msg, ["6", "support", "contact support", "connect with our team", "help"]): return "contact_support"
         if is_match(msg, ["7", "faq & authenticity", "faq", "authenticity"]): state.current_menu = "faq"; return "menu_faq"
+        if is_match(msg, ["8", "request a callback", "callback", "call me"]): return "start_callback_flow"
 
     elif ctx == "orders":
         if is_match(msg, ["1", "track order", "status", "track", "track my journey", "where is my order"]): return "track_order"
@@ -477,7 +509,6 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
         if is_match(msg, ["4", "shipping", "returns", "shipping & returns"]): return "faq_shipping_returns"
 
 
-    # Global Text Routing (Safety Net using expanded synonyms)
     if is_match(msg, ["orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
     if is_match(msg, ["products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
     if is_match(msg, ["recommendations", "help me choose"]): state.current_menu = "recommendations"; return "menu_recommendations"
@@ -590,7 +621,7 @@ async def start_session(request: Request, api_key: str = Security(verify_fronten
     return {
         "session_id": session_id,
         "session_token": session_token,
-        "opening_message": "Welcome to your safe space. I am Tatva, your personal wellness guide. How may I support your journey to balance today?\n\n1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ"
+        "opening_message": "Welcome to your safe space. I am Tatva, your personal wellness guide. How may I support your journey to balance today?\n\n1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n8. Request a Callback"
     }
 
 @app.post("/chat")
@@ -613,6 +644,9 @@ async def chat_endpoint(
             raise HTTPException(status_code=403, detail="Unauthorized session token.")
 
         state.turn_count += 1
+        state.chat_history.append({"role": "user", "text": body.message})
+        if len(state.chat_history) > 40:
+            state.chat_history = state.chat_history[-40:]
         
         if len(state.unique_intents) > 15 and state.session_age_seconds < 60:
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
@@ -620,10 +654,11 @@ async def chat_endpoint(
         if state.csat_awaiting:
             state.csat_awaiting = False
             log_analytics(ChatEvent("csat_rating", state.session_id, "csat", "feedback", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
-            return {"mode": "csat_complete", "response": "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n← Back | ⌂ Main Menu"}
+            asyncio.create_task(asyncio.to_thread(send_webhook, state, "csat_completed"))
+            return finalize_response(state, "csat_complete", "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n← Back | ⌂ Main Menu")
 
         if check_prompt_injection(body.message):
-            return {"mode": "structured", "response": "I am here specifically to assist with your AdiShila wellness journey and orders. How may I lovingly guide you today?\n\n← Back | ⌂ Main Menu"}
+            return finalize_response(state, "structured", "I am here specifically to assist with your AdiShila wellness journey and orders. How may I lovingly guide you today?\n\n← Back | ⌂ Main Menu")
 
         state.language = detect_language_safe(body.message)
         turn_frustration = calculate_frustration_score(body.message)
@@ -639,20 +674,63 @@ async def chat_endpoint(
                 "📧 info@adishila.in\n💬 WhatsApp: +91 86301 79867\n\n"
                 f"Reference: {ticket_id}"
             )
-            return {"mode": "escalation", "response": response_text}
+            asyncio.create_task(asyncio.to_thread(send_webhook, state, "escalation"))
+            return finalize_response(state, "escalation", response_text)
+
+        # --- OPT-IN CALLBACK FLOW ---
+        if state.in_callback_flow:
+            msg = body.message.strip()
+            msg_lower = msg.lower()
+            
+            # Allow user to exit the flow respectfully
+            if msg_lower in ["cancel", "stop", "nevermind", "skip", "go back"]:
+                state.in_callback_flow = False
+                state.callback_step = None
+                return finalize_response(state, "structured", "I completely understand. Your space is respected.\n\nWhere would you like to guide your journey next?\n\n← Back | ⌂ Main Menu")
+
+            if state.callback_step == "name":
+                state.callback_data["name"] = msg
+                state.callback_step = "phone"
+                return finalize_response(state, "structured", f"Thank you, {msg}. Could you kindly share your phone number so our team can reach you?")
+
+            elif state.callback_step == "phone":
+                state.callback_data["phone"] = msg
+                state.callback_step = "email"
+                return finalize_response(state, "structured", "Perfect. And what is your best email address?")
+
+            elif state.callback_step == "email":
+                state.callback_data["email"] = msg
+                state.callback_step = "reason"
+                return finalize_response(state, "structured", "Thank you. Lastly, what would you like to discuss during the callback? Please briefly share your reason.")
+
+            elif state.callback_step == "reason":
+                state.callback_data["reason"] = msg
+                state.in_callback_flow = False
+                state.callback_step = None
+                
+                # Trigger the webhook asynchronously
+                asyncio.create_task(asyncio.to_thread(send_webhook, state, "callback_requested"))
+                
+                state.csat_prompted = True
+                state.csat_awaiting = True
+                return finalize_response(state, "csat", "Your request has been gently received. Our human guides will reach out to you shortly to provide the care you deserve.\n\nBefore you go, how would you rate this experience with me?\n\n⭐ 1  ⭐⭐ 2  ⭐⭐⭐ 3  ⭐⭐⭐⭐ 4  ⭐⭐⭐⭐⭐ 5")
 
         if should_prompt_csat(body.message, state):
             state.csat_prompted = True
             state.csat_awaiting = True
-            return {"mode": "csat", "response": "It was truly my pleasure to help! Before we continue, how would you rate this experience with me?\n\n⭐ 1  ⭐⭐ 2  ⭐⭐⭐ 3  ⭐⭐⭐⭐ 4  ⭐⭐⭐⭐⭐ 5"}
+            return finalize_response(state, "csat", "It was truly my pleasure to help! Before we continue, how would you rate this experience with me?\n\n⭐ 1  ⭐⭐ 2  ⭐⭐⭐ 3  ⭐⭐⭐⭐ 4  ⭐⭐⭐⭐⭐ 5")
 
-        # --- DETERMINISTIC RESPONSE BUILDER ---
         intent = get_deterministic_intent(body.message, state)
         
-        # --- UPGRADE 5: STATE-AWARE ANTI-REPETITION ---
+        # Intercept Intent to Start Callback Flow
+        if intent == "start_callback_flow":
+            state.in_callback_flow = True
+            state.callback_step = "name"
+            log_analytics(ChatEvent("message", state.session_id, "structured", "start_callback_flow", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
+            return finalize_response(state, "structured", "I would be honored to arrange a callback with one of our human guides. To ensure they are fully prepared for your journey, I have just a few quick questions.\n\nFirstly, what is your name? (Or say 'cancel' to return to the menu)")
+
         is_content_repetition = False
         if intent and state.nav_history and state.nav_history[-1][0] == intent:
-            # If they trigger the same product/recommendation twice in a row, push to LLM
             if intent.startswith(("prod_", "rec_", "faq_", "usage_")):
                 is_content_repetition = True
 
@@ -674,21 +752,19 @@ async def chat_endpoint(
                 base_response += "\n\n← Back | ⌂ Main Menu"
 
             log_analytics(ChatEvent("message", state.session_id, "structured", intent, state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
-            return {"mode": "structured", "response": base_response}
+            return finalize_response(state, "structured", base_response)
 
-        # --- AI FALLBACK (NEW GOOGLE GENAI SDK) ---
         inactivity_reset = (time.time() - state.last_activity) > 1800  
         state.last_activity = time.time()
         if state.chat is None or state.turn_count % 50 == 0 or inactivity_reset:
             state.chat = ai_client.chats.create(model="gemini-2.5-flash", config=chat_config)
             
-        # --- AI RESPONSE CACHE ---
         cache_key = hashlib.md5(body.message.strip().lower().encode()).hexdigest()
         cached = ai_response_cache.get(cache_key)
         if cached:
             logger.info(f"AI cache hit for session {body.session_id}")
             log_analytics(ChatEvent("message", state.session_id, "natural", "ai_cache_hit", state.language, len(body.message), 0, state.frustration_signals, state.turn_count))
-            return {"mode": "natural", "response": cached + "\n\n← Back | ⌂ Main Menu"}
+            return finalize_response(state, "natural", cached + "\n\n← Back | ⌂ Main Menu")
 
         loop = asyncio.get_running_loop()
         prompt_with_context = f"[RESPOND IN: {state.language}] User message: {body.message}\nConstraint: Answer strictly as AdiShila wellness support. Provide empathetic guidance and recommend products if applicable."
@@ -712,10 +788,7 @@ async def chat_endpoint(
                 logger.error(f"Gemini API error (attempt {attempt+1}): {e}")
                 
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
-                    return {
-                        "mode": "fallback",
-                        "response": "My connection is currently experiencing heavy traffic. Please beautifully select an option from the menu, or reach our human team directly at info@adishila.in."
-                    }
+                    return finalize_response(state, "fallback", "My connection is currently experiencing heavy traffic. Please beautifully select an option from the menu, or reach our human team directly at info@adishila.in.")
                     
                 if attempt == 2: raise HTTPException(status_code=502, detail="Upstream AI service unavailable")
                 await asyncio.sleep(2 ** attempt)
@@ -738,7 +811,7 @@ async def chat_endpoint(
                 ai_response_cache[cache_key] = response_text
 
         log_analytics(ChatEvent("message", state.session_id, "natural", "ai_fallback", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
-        return {"mode": "natural", "response": response_text}
+        return finalize_response(state, "natural", response_text)
 
     except HTTPException:
         raise
