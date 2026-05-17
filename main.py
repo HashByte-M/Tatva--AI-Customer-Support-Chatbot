@@ -705,6 +705,11 @@ async def chat_endpoint(
 
             elif state.callback_step == "reason":
                 state.callback_data["reason"] = msg
+                
+                # Generate Ticket ID
+                ticket_id = generate_ticket_id()
+                state.callback_data["ticket_id"] = ticket_id
+                
                 state.in_callback_flow = False
                 state.callback_step = None
                 
@@ -713,7 +718,7 @@ async def chat_endpoint(
                 
                 state.csat_prompted = True
                 state.csat_awaiting = True
-                return finalize_response(state, "csat", "Your request has been gently received. Our human guides will reach out to you shortly to provide the care you deserve.\n\nBefore you go, how would you rate this experience with me?\n\n⭐ 1  ⭐⭐ 2  ⭐⭐⭐ 3  ⭐⭐⭐⭐ 4  ⭐⭐⭐⭐⭐ 5")
+                return finalize_response(state, "csat", f"Your request has been gently received. Our human guides will reach out to you shortly to provide the care you deserve.\n\nYour secure reference is: **{ticket_id}**\n\nBefore you go, how would you rate this experience with me?\n\n⭐ 1  ⭐⭐ 2  ⭐⭐⭐ 3  ⭐⭐⭐⭐ 4  ⭐⭐⭐⭐⭐ 5")
 
         if should_prompt_csat(body.message, state):
             state.csat_prompted = True
