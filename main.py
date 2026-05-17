@@ -6,6 +6,7 @@ import uuid
 import asyncio
 import logging
 import hashlib
+import hmac
 import secrets
 import threading
 from logging.handlers import RotatingFileHandler
@@ -37,14 +38,46 @@ FRONTEND_SECRET_KEY = os.getenv("FRONTEND_SECRET_KEY")
 if not FRONTEND_SECRET_KEY:
     raise RuntimeError("CRITICAL: FRONTEND_SECRET_KEY environment variable is required.")
 
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY")
+if not ADMIN_SECRET_KEY:
+    raise RuntimeError("CRITICAL: ADMIN_SECRET_KEY environment variable is required.")
+
+TOKEN_WINDOW_SECONDS = 3600  # Tokens rotate every hour
+
+def generate_widget_token() -> str:
+    window = int(time.time()) // TOKEN_WINDOW_SECONDS
+    return hmac.new(
+        FRONTEND_SECRET_KEY.encode(),
+        f"widget-token-{window}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+def verify_widget_token(token: str) -> bool:
+    for offset in [0, -1]:
+        window = (int(time.time()) // TOKEN_WINDOW_SECONDS) + offset
+        expected = hmac.new(
+            FRONTEND_SECRET_KEY.encode(),
+            f"widget-token-{window}".encode(),
+            hashlib.sha256
+        ).hexdigest()
+        if hmac.compare_digest(token, expected):
+            return True
+    return False
+
 api_key_header = APIKeyHeader(name="X-Widget-Key", auto_error=True)
+admin_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=True)
 
 def verify_frontend_key(api_key: str = Security(api_key_header)) -> str:
-    if api_key != FRONTEND_SECRET_KEY:
+    if not verify_widget_token(api_key):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Invalid Frontend Key"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or expired widget token. Please refresh the page."
         )
+    return api_key
+
+def verify_admin_key(api_key: str = Security(admin_key_header)) -> str:
+    if api_key != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin key.")
     return api_key
 
 # --- LOGGING & ANALYTICS ---
@@ -72,6 +105,7 @@ class ChatEvent:
     frustration_level: int
     turn_number: int
     ticket_id: Optional[str] = None
+    timestamp: float = field(default_factory=time.time)
 
 def log_analytics(event: ChatEvent):
     try:
@@ -100,11 +134,17 @@ if not gemini_key:
 
 ai_client = genai.Client(api_key=gemini_key)
 
-lang_detector = LanguageDetectorBuilder.from_languages(
-    Language.ENGLISH, Language.HINDI, Language.BENGALI, 
-    Language.MARATHI, Language.TAMIL, Language.TELUGU, 
-    Language.GUJARATI, Language.URDU, Language.RUSSIAN
-).build()
+_lang_detector = None
+
+def get_lang_detector():
+    global _lang_detector
+    if _lang_detector is None:
+        _lang_detector = LanguageDetectorBuilder.from_languages(
+            Language.ENGLISH, Language.HINDI, Language.BENGALI,
+            Language.MARATHI, Language.TAMIL, Language.TELUGU,
+            Language.GUJARATI, Language.URDU, Language.RUSSIAN
+        ).build()
+    return _lang_detector
 
 system_instruction = """
 You are Tatva, the official multilingual AI Wellness Companion for AdiShila (adishila.in).
@@ -135,7 +175,8 @@ chat_config = types.GenerateContentConfig(
 
 # --- STATE MANAGEMENT ---
 sessions = TTLCache(maxsize=5000, ttl=3600)
-sessions_lock = threading.Lock() 
+sessions_lock = threading.Lock()
+ai_response_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)  # Cache frequent AI fallback answers 
 
 @dataclass
 class SessionState:
@@ -152,6 +193,7 @@ class SessionState:
     response_hash_set: Set[str] = field(default_factory=set)
     unique_intents: Set[str] = field(default_factory=set)
     created_at: float = field(default_factory=time.time)
+    last_activity: float = field(default_factory=time.time)
     chat: Any = None 
 
     @property
@@ -169,7 +211,7 @@ def generate_ticket_id() -> str:
 
 def detect_language_safe(text: str) -> str:
     try:
-        pointer_lang = lang_detector.detect_language_of(text)
+        pointer_lang = get_lang_detector().detect_language_of(text)
         if pointer_lang == Language.HINDI: return "hi"
         if pointer_lang == Language.RUSSIAN: return "ru"
         hindi_markers = {"kya", "mujhe", "mera", "hai", "kar", "nahi", "kyun", "kaise", "kab"}
@@ -407,6 +449,76 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "Tatva Wellness API"}
+
+@app.get("/token")
+async def get_widget_token():
+    """Public endpoint — returns a short-lived HMAC widget token. Rotates hourly."""
+    token = generate_widget_token()
+    return {"token": token, "expires_in": TOKEN_WINDOW_SECONDS}
+
+@app.get("/analytics/summary")
+async def analytics_summary(api_key: str = Security(verify_admin_key)):
+    """Admin-only endpoint — aggregates the last 7 days of analytics.jsonl."""
+    events = []
+    try:
+        with open("analytics.jsonl", "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    except FileNotFoundError:
+        return {"error": "No analytics data found yet."}
+
+    if not events:
+        return {"total_events": 0}
+
+    cutoff = time.time() - 7 * 24 * 3600
+    recent = [e for e in events if e.get("timestamp", 0) >= cutoff] or events  # fallback: all
+
+    total = len(recent)
+    modes = {}
+    intents = {}
+    languages = {}
+    frustration_events = 0
+    csat_scores = []
+    response_times = []
+
+    for e in recent:
+        modes[e.get("mode", "unknown")] = modes.get(e.get("mode", "unknown"), 0) + 1
+        intent = e.get("intent")
+        if intent:
+            intents[intent] = intents.get(intent, 0) + 1
+        lang = e.get("language", "unknown")
+        languages[lang] = languages.get(lang, 0) + 1
+        if e.get("frustration_level", 0) >= 2:
+            frustration_events += 1
+        if e.get("event_type") == "csat_rating" and e.get("intent") == "feedback":
+            pass  # score not stored in event yet
+        rt = e.get("response_time_ms")
+        if rt:
+            response_times.append(rt)
+
+    top_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)[:10]
+    avg_response_ms = int(sum(response_times) / len(response_times)) if response_times else 0
+
+    return {
+        "period": "last_7_days_or_all",
+        "total_events": total,
+        "mode_breakdown": modes,
+        "top_intents": [{"intent": k, "count": v} for k, v in top_intents],
+        "language_breakdown": languages,
+        "frustration_escalations": frustration_events,
+        "avg_response_time_ms": avg_response_ms,
+        "unique_sessions": len(set(e.get("session_id") for e in recent))
+    }
+
 @app.post("/session/start")
 @limiter.limit("10/minute")
 async def start_session(request: Request, api_key: str = Security(verify_frontend_key)):
@@ -502,9 +614,19 @@ async def chat_endpoint(
             return {"mode": "structured", "response": base_response}
 
         # --- AI FALLBACK (NEW GOOGLE GENAI SDK) ---
-        if state.chat is None or state.turn_count % 30 == 0:
+        inactivity_reset = (time.time() - state.last_activity) > 1800  # 30 min idle
+        state.last_activity = time.time()
+        if state.chat is None or state.turn_count % 50 == 0 or inactivity_reset:
             state.chat = ai_client.chats.create(model="gemini-2.5-flash", config=chat_config)
             
+        # --- AI RESPONSE CACHE ---
+        cache_key = hashlib.md5(body.message.strip().lower().encode()).hexdigest()
+        cached = ai_response_cache.get(cache_key)
+        if cached:
+            logger.info(f"AI cache hit for session {body.session_id}")
+            log_analytics(ChatEvent("message", state.session_id, "natural", "ai_cache_hit", state.language, len(body.message), 0, state.frustration_signals, state.turn_count))
+            return {"mode": "natural", "response": cached + "\n\n← Back | ⌂ Main Menu"}
+
         loop = asyncio.get_running_loop()
         prompt_with_context = f"[RESPOND IN: {state.language}] User message: {body.message}\nConstraint: Answer strictly as AdiShila wellness support. Provide empathetic guidance and recommend products if applicable."
         
@@ -548,6 +670,10 @@ async def chat_endpoint(
                 state.response_hash_set.discard(state.response_hashes[0])
             state.response_hashes.append(resp_hash)
             state.response_hash_set.add(resp_hash)
+
+            # Store in AI cache (skip very short or personalised replies)
+            if len(response_text) > 80:
+                ai_response_cache[cache_key] = response_text
 
         log_analytics(ChatEvent("message", state.session_id, "natural", "ai_fallback", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
         return {"mode": "natural", "response": response_text}
