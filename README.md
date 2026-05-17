@@ -361,7 +361,7 @@ The port defaults to 8000 but reads from the `PORT` environment variable — mos
 
 - Rate limit values (`10/minute`, `20/minute`) — reasonable defaults for most deployments
 - Session TTL (3600 seconds) and max sessions (5000) — tune only if memory is constrained
-- Chat object reset interval (every 30 turns) — balances context retention with token cost
+- Chat object reset interval (every 100 turns) — balances context retention with token cost
 - Timeout values (25 seconds, 3 retries, exponential back-off) — sensible for Gemini Flash
 
 ---
