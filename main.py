@@ -253,19 +253,6 @@ def should_prompt_csat(msg: str, state: SessionState) -> bool:
         return False
     return any(re.search(rf'\b{re.escape(t)}\b', msg_lower) for t in CSAT_TRIGGERS)
 
-def is_match(user_msg: str, target_phrases: List[str]) -> bool:
-    user_msg_clean = user_msg.strip()
-    
-    for phrase in target_phrases:
-        if user_msg_clean.lower() == phrase.lower():
-            return True
-        if fuzz.token_set_ratio(phrase, user_msg_clean) >= 85:
-            return True
-        if len(user_msg_clean.split()) == 1 and len(phrase.split()) == 1:
-            if fuzz.ratio(phrase, user_msg_clean) >= 80:
-                return True
-    return False
-
 def check_prompt_injection(msg: str) -> bool:
     msg_lower = msg.lower()
     injection_terms = ["ignore previous", "ignore all previous", "system prompt", "forget instructions", "new instructions", "disregard previous"]
@@ -275,7 +262,31 @@ def format_suggestion(s: str) -> str:
     formatted = s.replace('prod_', '').replace('rec_', '').replace('faq_', '').replace('_', ' ').title()
     return formatted.replace('Emf', 'EMF').replace('Moq', 'MOQ').replace('Faq', 'FAQ')
 
-# --- CLEANED FIXED RESPONSES ---
+# --- UPGRADE 1: WORD-COUNT HEURISTIC MATCHER ---
+def is_match(user_msg: str, target_phrases: List[str]) -> bool:
+    user_msg_clean = user_msg.strip().lower()
+    word_count = len(user_msg_clean.split())
+    
+    for phrase in target_phrases:
+        phrase_lower = phrase.lower()
+        if user_msg_clean == phrase_lower:
+            return True
+            
+        if word_count == 1 and len(phrase_lower.split()) == 1:
+            if fuzz.ratio(phrase_lower, user_msg_clean) >= 80:
+                return True
+                
+        # Only allow aggressive fuzzy matching for short commands (menus, clicks)
+        if word_count <= 4: 
+            if fuzz.token_set_ratio(phrase_lower, user_msg_clean) >= 85:
+                return True
+        else:
+            # If it's a long sentence, demand strict similarity to avoid false positives
+            if fuzz.ratio(phrase_lower, user_msg_clean) >= 90:
+                return True
+    return False
+
+# --- STATIC RESPONSES (Truncated for brevity, kept exactly as requested previously) ---
 STATIC_RESPONSES = {
     "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
     "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order",
@@ -344,6 +355,53 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
     msg = raw_msg.strip().lower()
     ctx = state.current_menu
 
+    # --- UPGRADE 2: NEGATION TRAPPING ---
+    negation_words = ["not", "other than", "besides", "instead of", "except", "don't want", "no"]
+    if any(neg in msg for neg in negation_words):
+        if any(prod in msg for prod in ["kavach", "shield", "trishul"]):
+            state.current_menu = "recommendations"
+            return "rec_emf"
+        if any(prod in msg for prod in ["pyramid", "lingam", "vastu"]):
+            state.current_menu = "recommendations"
+            return "rec_vastu"
+        if any(prod in msg for prod in ["mala", "pendant", "necklace"]):
+            state.current_menu = "recommendations"
+            return "rec_daily"
+
+    # --- UPGRADE 3: CONTEXTUAL MICRO-INTENTS ---
+    if state.nav_history:
+        last_intent = state.nav_history[-1][0]
+        
+        if last_intent == "prod_kavach":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_kavach"
+            if is_match(msg, ["how to use", "use", "instructions", "apply"]): return "usage_kavach"
+            
+        elif last_intent == "prod_lingam":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_lingam"
+            if is_match(msg, ["how to use", "use", "instructions", "placement", "where to put"]): return "usage_lingam"
+            
+        elif last_intent == "prod_pyramid":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_pyramid"
+            if is_match(msg, ["how to use", "where to place", "placement", "directions"]): return "usage_pyramid"
+            
+        elif last_intent == "prod_mala":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_mala"
+            if is_match(msg, ["how to use", "wear", "instructions"]): return "usage_mala"
+            
+        elif last_intent == "prod_water":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_water"
+            if is_match(msg, ["how to use", "prepare", "soak", "instructions"]): return "usage_water"
+            
+        elif last_intent == "prod_trishul":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_trishul"
+            if is_match(msg, ["how to use", "apply", "instructions"]): return "usage_trishul"
+            
+        elif last_intent == "prod_pendant":
+            if is_match(msg, ["price", "cost", "how much"]): return "prod_pendant"
+            if is_match(msg, ["how to use", "wear", "instructions"]): return "usage_pendant"
+
+
+    # Standard Navigation
     if is_match(msg, ["back", "← back", "go back", "previous"]):
         if len(state.nav_history) > 1:
             state.nav_history.pop() 
@@ -362,89 +420,90 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
     if is_match(msg, ["human", "agent", "talk to someone", "real person", "contact support", "support"]):
         return "contact_support"
 
-    # Strict Contextual Routing
+    # --- UPGRADE 4: LOCAL SYNONYM EXPANSION IN STRICT & GLOBAL ROUTING ---
     if ctx == "main":
         if is_match(msg, ["1", "orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
-        if is_match(msg, ["2", "products", "wellness products"]): state.current_menu = "products"; return "menu_products"
-        if is_match(msg, ["3", "recommendations", "personalized"]): state.current_menu = "recommendations"; return "menu_recommendations"
-        if is_match(msg, ["4", "wholesale", "wholesale inquiries"]): state.current_menu = "wholesale"; return "menu_wholesale"
+        if is_match(msg, ["2", "products", "wellness products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
+        if is_match(msg, ["3", "recommendations", "personalized", "help me choose"]): state.current_menu = "recommendations"; return "menu_recommendations"
+        if is_match(msg, ["4", "wholesale", "wholesale inquiries", "bulk", "retailer"]): state.current_menu = "wholesale"; return "menu_wholesale"
         if is_match(msg, ["5", "how to use", "product usage", "usage", "guidance"]): state.current_menu = "usage"; return "menu_usage"
-        if is_match(msg, ["6", "support", "contact support", "connect with our team"]): return "contact_support"
+        if is_match(msg, ["6", "support", "contact support", "connect with our team", "help"]): return "contact_support"
         if is_match(msg, ["7", "faq & authenticity", "faq", "authenticity"]): state.current_menu = "faq"; return "menu_faq"
 
     elif ctx == "orders":
-        if is_match(msg, ["1", "track order", "status", "track", "track my journey"]): return "track_order"
+        if is_match(msg, ["1", "track order", "status", "track", "track my journey", "where is my order"]): return "track_order"
         if is_match(msg, ["2", "return", "refund", "exchange", "returns", "returns & exchanges"]): return "return_refund"
         if is_match(msg, ["3", "damaged", "broken", "shattered", "crack", "defective", "damaged item", "report a damaged item"]): return "damaged_item"
         if is_match(msg, ["4", "shipping info", "delivery", "when will it arrive", "shipping details"]): return "shipping_info"
         if is_match(msg, ["5", "cancel", "cancel order", "cancel an order"]): return "cancel_order"
 
     elif ctx == "products":
-        if is_match(msg, ["1", "kavach shield", "kavach"]): return "prod_kavach"
-        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam"]): return "prod_lingam"
-        if is_match(msg, ["3", "pyramid", "vastu pyramid"]): return "prod_pyramid"
-        if is_match(msg, ["4", "mala", "raksha mala"]): return "prod_mala"
-        if is_match(msg, ["5", "water set", "amrit jal"]): return "prod_water"
-        if is_match(msg, ["6", "trishul", "trishul shield"]): return "prod_trishul"
-        if is_match(msg, ["7", "pendant", "om pendant"]): return "prod_pendant"
+        if is_match(msg, ["1", "kavach shield", "kavach", "phone shield", "om shield"]): return "prod_kavach"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam", "shivling"]): return "prod_lingam"
+        if is_match(msg, ["3", "pyramid", "vastu pyramid", "shungite pyramid"]): return "prod_pyramid"
+        if is_match(msg, ["4", "mala", "raksha mala", "bracelet", "rudraksha"]): return "prod_mala"
+        if is_match(msg, ["5", "water set", "amrit jal", "water purification", "stones for water"]): return "prod_water"
+        if is_match(msg, ["6", "trishul", "trishul shield", "shiva weapon", "trident"]): return "prod_trishul"
+        if is_match(msg, ["7", "pendant", "om pendant", "necklace", "jewelry"]): return "prod_pendant"
 
     elif ctx == "recommendations":
-        if is_match(msg, ["1", "emf", "emf protection", "emf wellness", "digital detox"]): return "rec_emf"
-        if is_match(msg, ["2", "vastu", "spatial harmony"]): return "rec_vastu"
-        if is_match(msg, ["3", "meditation", "deepening meditation"]): return "rec_meditation"
-        if is_match(msg, ["4", "gifting", "gift", "meaningful gifting"]): return "rec_gifting"
-        if is_match(msg, ["5", "office", "office setup", "desk", "grounded office setup"]): return "rec_office"
-        if is_match(msg, ["6", "daily wear", "daily personal wear"]): return "rec_daily"
+        if is_match(msg, ["1", "emf", "emf protection", "emf wellness", "digital detox", "radiation", "5g", "wifi", "laptop", "sleep", "insomnia", "headache"]): return "rec_emf"
+        if is_match(msg, ["2", "vastu", "spatial harmony", "new home", "house energy", "bad vibes"]): return "rec_vastu"
+        if is_match(msg, ["3", "meditation", "deepening meditation", "focus", "japa", "chanting", "spiritual"]): return "rec_meditation"
+        if is_match(msg, ["4", "gifting", "gift", "meaningful gifting", "present", "for a friend"]): return "rec_gifting"
+        if is_match(msg, ["5", "office", "office setup", "desk", "grounded office setup", "work stress"]): return "rec_office"
+        if is_match(msg, ["6", "daily wear", "daily personal wear", "carry with me", "always on"]): return "rec_daily"
 
     elif ctx == "wholesale":
         if is_match(msg, ["1", "moq", "pricing", "cost", "pricing & moq", "minimum order & pricing"]): return "wholesale_moq"
         if is_match(msg, ["2", "sample", "samples", "request samples"]): return "wholesale_sample"
-        if is_match(msg, ["3", "margin", "margins", "retail margins"]): return "wholesale_margin"
+        if is_match(msg, ["3", "margin", "margins", "retail margins", "profit"]): return "wholesale_margin"
         if is_match(msg, ["4", "shipping & payments", "shipping"]): return "wholesale_shipping"
-        if is_match(msg, ["5", "partnership", "stockist", "partner setup", "become a partner"]): return "wholesale_partnership"
+        if is_match(msg, ["5", "partnership", "stockist", "partner setup", "become a partner", "resell"]): return "wholesale_partnership"
 
     elif ctx == "usage":
-        if is_match(msg, ["1", "kavach", "kavach shield"]): return "usage_kavach"
-        if is_match(msg, ["2", "lingam", "kali yuga lingam"]): return "usage_lingam"
+        if is_match(msg, ["1", "kavach", "kavach shield", "phone sticker"]): return "usage_kavach"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam"]): return "usage_lingam"
         if is_match(msg, ["3", "pyramid", "placing the pyramid"]): return "usage_pyramid"
-        if is_match(msg, ["4", "mala", "wearing the mala"]): return "usage_mala"
+        if is_match(msg, ["4", "mala", "wearing the mala", "bracelet"]): return "usage_mala"
         if is_match(msg, ["5", "water set", "water", "preparing the water set"]): return "usage_water"
         if is_match(msg, ["6", "trishul", "trishul shield", "using the trishul shield"]): return "usage_trishul"
-        if is_match(msg, ["7", "pendant", "wearing the pendant"]): return "usage_pendant"
+        if is_match(msg, ["7", "pendant", "wearing the pendant", "necklace"]): return "usage_pendant"
 
     elif ctx == "faq":
-        if is_match(msg, ["1", "why choose adishila", "credibility", "why adishila"]): return "faq_credibility"
+        if is_match(msg, ["1", "why choose adishila", "credibility", "why adishila", "who are you"]): return "faq_credibility"
         if is_match(msg, ["2", "authentic", "genuine", "real", "fake", "authenticity"]): return "faq_authentic"
-        if is_match(msg, ["3", "how does it work", "science", "benefits", "how it works"]): return "faq_how_it_works"
+        if is_match(msg, ["3", "how does it work", "science", "benefits", "how it works", "c60", "fullerenes"]): return "faq_how_it_works"
         if is_match(msg, ["4", "shipping", "returns", "shipping & returns"]): return "faq_shipping_returns"
 
-    # Global Text Routing (Safety Net)
+
+    # Global Text Routing (Safety Net using expanded synonyms)
     if is_match(msg, ["orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
-    if is_match(msg, ["products"]): state.current_menu = "products"; return "menu_products"
-    if is_match(msg, ["recommendations"]): state.current_menu = "recommendations"; return "menu_recommendations"
-    if is_match(msg, ["wholesale"]): state.current_menu = "wholesale"; return "menu_wholesale"
+    if is_match(msg, ["products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
+    if is_match(msg, ["recommendations", "help me choose"]): state.current_menu = "recommendations"; return "menu_recommendations"
+    if is_match(msg, ["wholesale", "bulk"]): state.current_menu = "wholesale"; return "menu_wholesale"
     if is_match(msg, ["how to use", "usage"]): state.current_menu = "usage"; return "menu_usage"
     if is_match(msg, ["faq & authenticity", "faq"]): state.current_menu = "faq"; return "menu_faq"
 
-    if is_match(msg, ["track order", "status", "track"]): return "track_order"
+    if is_match(msg, ["track order", "status", "track", "where is my order"]): return "track_order"
     if is_match(msg, ["refund", "return", "exchange"]): return "return_refund"
     if is_match(msg, ["damaged", "broken", "shattered", "crack", "defective"]): return "damaged_item"
     if is_match(msg, ["cancel"]): return "cancel_order"
     if is_match(msg, ["shipping", "delivery"]): return "shipping_info"
 
-    if is_match(msg, ["kavach", "kavach shield"]): return "prod_kavach"
-    if is_match(msg, ["lingam", "kali yuga lingam", "shiva lingam"]): return "prod_lingam"
+    if is_match(msg, ["kavach", "kavach shield", "phone shield"]): return "prod_kavach"
+    if is_match(msg, ["lingam", "kali yuga lingam", "shiva lingam", "shivling"]): return "prod_lingam"
     if is_match(msg, ["pyramid", "vastu pyramid"]): return "prod_pyramid"
-    if is_match(msg, ["mala", "raksha mala"]): return "prod_mala"
-    if is_match(msg, ["water set", "amrit jal"]): return "prod_water"
-    if is_match(msg, ["trishul", "trishul shield"]): return "prod_trishul"
-    if is_match(msg, ["pendant", "om pendant"]): return "prod_pendant"
+    if is_match(msg, ["mala", "raksha mala", "bracelet", "rudraksha"]): return "prod_mala"
+    if is_match(msg, ["water set", "amrit jal", "water purification"]): return "prod_water"
+    if is_match(msg, ["trishul", "trishul shield", "shiva weapon", "trident"]): return "prod_trishul"
+    if is_match(msg, ["pendant", "om pendant", "necklace"]): return "prod_pendant"
 
-    if is_match(msg, ["emf", "emf wellness"]): return "rec_emf"
-    if is_match(msg, ["office", "office setup", "desk"]): return "rec_office"
+    if is_match(msg, ["emf", "emf wellness", "radiation", "5g", "wifi", "laptop", "sleep", "insomnia", "headache"]): return "rec_emf"
+    if is_match(msg, ["office", "office setup", "desk", "work stress"]): return "rec_office"
 
     if is_match(msg, ["authentic", "genuine", "real"]): return "faq_authentic"
-    if is_match(msg, ["science", "benefits"]): return "faq_how_it_works"
+    if is_match(msg, ["science", "benefits", "how does it work", "c60"]): return "faq_how_it_works"
 
     return None
 
@@ -460,13 +519,11 @@ async def root():
 
 @app.get("/token")
 async def get_widget_token():
-    """Public endpoint — returns a short-lived HMAC widget token. Rotates hourly."""
     token = generate_widget_token()
     return {"token": token, "expires_in": TOKEN_WINDOW_SECONDS}
 
 @app.get("/analytics/summary")
 async def analytics_summary(api_key: str = Security(verify_admin_key)):
-    """Admin-only endpoint — aggregates the last 7 days of analytics.jsonl."""
     events = []
     try:
         with open("analytics.jsonl", "r") as f:
@@ -492,7 +549,6 @@ async def analytics_summary(api_key: str = Security(verify_admin_key)):
     intents = {}
     languages = {}
     frustration_events = 0
-    csat_scores = []
     response_times = []
 
     for e in recent:
@@ -504,8 +560,6 @@ async def analytics_summary(api_key: str = Security(verify_admin_key)):
         languages[lang] = languages.get(lang, 0) + 1
         if e.get("frustration_level", 0) >= 2:
             frustration_events += 1
-        if e.get("event_type") == "csat_rating" and e.get("intent") == "feedback":
-            pass 
         rt = e.get("response_time_ms")
         if rt:
             response_times.append(rt)
@@ -594,10 +648,17 @@ async def chat_endpoint(
 
         # --- DETERMINISTIC RESPONSE BUILDER ---
         intent = get_deterministic_intent(body.message, state)
-        if intent:
+        
+        # --- UPGRADE 5: STATE-AWARE ANTI-REPETITION ---
+        is_content_repetition = False
+        if intent and state.nav_history and state.nav_history[-1][0] == intent:
+            # If they trigger the same product/recommendation twice in a row, push to LLM
+            if intent.startswith(("prod_", "rec_", "faq_", "usage_")):
+                is_content_repetition = True
+
+        if intent and not is_content_repetition:
             state.unique_intents.add(intent)
             
-            # Stack Management
             if not state.nav_history or state.nav_history[-1][0] != intent:
                 state.nav_history.append((intent, state.current_menu))
             if len(state.nav_history) > 20:
@@ -609,7 +670,6 @@ async def chat_endpoint(
                 suggestions = " | ".join(f"**{format_suggestion(r)}**" for r in RELATED[intent])
                 base_response += f"\n\n─────\nExplore further on your wellness journey:\n{suggestions}"
             
-            # UNIFIED INJECTION CONTROL
             if "menu_main" not in intent:
                 base_response += "\n\n← Back | ⌂ Main Menu"
 
