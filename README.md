@@ -83,7 +83,7 @@ When no deterministic intent matches, the backend initialises or reuses a `genai
 - A brand-constrained constraint clause
 - Conversation history maintained within the Gemini chat object
 
-The chat object resets every 30 turns to prevent token bloat. API calls use `asyncio.wait_for` with a 25-second timeout and an exponential back-off retry loop (3 attempts, doubling delay).
+The chat object resets every 100 turns to prevent token bloat. API calls use `asyncio.wait_for` with a 25-second timeout and an exponential back-off retry loop (3 attempts, doubling delay).
 
 ### 2.4 Multilingual Support
 
