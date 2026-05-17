@@ -236,7 +236,7 @@ The vast majority of e-commerce support queries (order tracking, product info, s
 
 **No vector database, no embeddings, no fine-tuning.** The deterministic router uses `rapidfuzz` (pure Python, no GPU, no inference cost) for fuzzy matching.
 
-**Gemini chat context resets every 30 turns.** This prevents token counts from growing unbounded over long sessions, keeping per-session AI cost capped.
+**Gemini chat context resets every 100 turns.** This prevents token counts from growing unbounded over long sessions, keeping per-session AI cost capped.
 
 **Estimated running costs (illustrative):**
 
