@@ -154,6 +154,7 @@ Your persona is deeply empathetic, grounded, intuitive, and highly helpful. You 
 
 RIGID PRODUCT CATALOG (YOU MUST ONLY RECOMMEND THESE EXACT ITEMS):
 - Kavach Shield
+- Kali Yuga Lingam
 - Vastu Dosh Pyramid
 - Raksha Mala
 - Amrit Jal Set
@@ -176,7 +177,7 @@ chat_config = types.GenerateContentConfig(
 # --- STATE MANAGEMENT ---
 sessions = TTLCache(maxsize=5000, ttl=3600)
 sessions_lock = threading.Lock()
-ai_response_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)  # Cache frequent AI fallback answers 
+ai_response_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
 @dataclass
 class SessionState:
@@ -247,8 +248,6 @@ CSAT_TRIGGERS = [
 def should_prompt_csat(msg: str, state: SessionState) -> bool:
     if state.csat_prompted or state.turn_count < 3: return False
     msg_lower = msg.lower().strip()
-    # Only trigger on short gratitude messages (≤8 words) to avoid false positives
-    # on messages like "ok, what products do you have?" or "sure, tell me more"
     word_count = len(msg_lower.split())
     if word_count > 8:
         return False
@@ -276,14 +275,14 @@ def format_suggestion(s: str) -> str:
     formatted = s.replace('prod_', '').replace('rec_', '').replace('faq_', '').replace('_', ' ').title()
     return formatted.replace('Emf', 'EMF').replace('Moq', 'MOQ').replace('Faq', 'FAQ')
 
-# --- CLEANED FIXED RESPONSES (TRAILING STRINGS REMOVED FROM INTERNAL MAPS) ---
+# --- CLEANED FIXED RESPONSES ---
 STATIC_RESPONSES = {
     "menu_main": "1. Orders\n2. Products\n3. Recommendations\n4. Wholesale\n5. How to Use\n6. Support\n7. FAQ\n\nPlease select an area you'd like to explore, or simply share how you are feeling right now.",
     "menu_orders": "1. Track Order\n2. Returns\n3. Damaged Item\n4. Shipping Info\n5. Cancel Order",
-    "menu_products": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Trishul Shield\n6. Pendant",
+    "menu_products": "1. Kavach Shield\n2. Kali Yuga Lingam\n3. Vastu Pyramid\n4. Raksha Mala\n5. Amrit Jal Set\n6. Trishul Shield\n7. OM Pendant",
     "menu_recommendations": "True well-being relies on maintaining subtle energetic equilibrium across all fields of our daily life. Whether you are seeking protection against modern electromagnetic fatigue or hoping to ground the structural alignment of an environment, I can isolate tools tailored to your layout.\n\nWhich area of your lifestyle environment needs balance today?\n\n1. EMF Protection\n2. Vastu\n3. Meditation\n4. Gifting\n5. Office Setup\n6. Daily Wear",    
     "menu_wholesale": "1. Pricing & MOQ\n2. Samples\n3. Margins\n4. Shipping\n5. Partner Setup",
-    "menu_usage": "1. Kavach Shield\n2. Pyramid\n3. Mala\n4. Water Set\n5. Pendant\n6. Trishul Shield",
+    "menu_usage": "1. Kavach Shield\n2. Kali Yuga Lingam\n3. Vastu Pyramid\n4. Raksha Mala\n5. Amrit Jal Set\n6. Trishul Shield\n7. OM Pendant",
     "menu_faq": "1. Why AdiShila?\n2. Authenticity\n3. How it Works\n4. Shipping & Returns",
     
     "track_order": "I understand you are eager to receive your wellness tools. To check the journey of your order, please email info@adishila.in with your Order ID, Full Name, and Phone Number. Our support family will look into it right away.",
@@ -293,14 +292,15 @@ STATIC_RESPONSES = {
     "shipping_info": "We entrust our premium artifacts to secure couriers for Pan-India delivery.\n\n• Expected timeline: 5–7 business days\n• Free shipping for journeys above ₹10,000",
     
     "prod_kavach": "KAVACH SHIELD — OM (₹699)\n\nThe Kavach Shield is our most cherished tool for digital wellness. Crafted from solid Karelian shungite and inscribed with the sacred OM, it gracefully transforms your digital devices from sources of fatigue into anchors of calm. \n\nSimply attach it to the back of your phone to protect your personal energy field.",
+    "prod_lingam": "KALI YUGA LINGAM (₹1,299–₹1,999)\n\nBorn 2 billion years before the Himalayas, this is the Primordial Stone of Shiva. A polished shungite egg-form rests beautifully on a handcrafted brass yoni-peetham base from Moradabad.\n\nIt is the only Shiva Lingam crafted from a fullerene mineral, making it a profoundly grounding centerpiece for your Puja room.",
     "prod_pyramid": "VASTU DOSH PYRAMID (₹999–₹1,499)\n\nPyramids represent powerful, stabilizing geometry in Vastu Shastra. Crafted from solid authentic shungite with a copper foil band, this pyramid continuously absorbs ambient tension and beautifully grounds the energy of an entire room. \n\nPerfect for workspaces, living rooms, or near your WiFi router.",
-    "prod_mala": "RUDRA-SHILA RAKSHA MALA (₹499–₹799)\n\nAn exquisite fusion of ancient traditions. This 27-bead wrist mala combines the grounding, carbon-rich essence of authentic Shungite with the spiritual protection of Rudraksha. \n\nIt is perfect for maintaining personal calm throughout your busy day or as a physical anchor to hold during your meditation practice.",
-    "prod_water": "AMRIT JAL SHUDDHI SET (₹599–₹999)\n\nDrawing from Ayurvedic wisdom, this set helps you create naturally structured, shungite-infused water. Shungite is naturally rich in C60 fullerenes, historically celebrated for purifying water and life energy.\n\nIncludes raw washed chips and a pure copper coin to soak for 6–8 hours.",
+    "prod_mala": "RUDRA-SHILA RAKSHA MALA (₹499–₹799)\n\nAn exquisite fusion of ancient traditions. This 27-bead wrist mala combines the grounding, carbon-rich essence of authentic Shungite with the spiritual protection of a genuine 5-Mukhi Rudraksha. \n\nIt is perfect for maintaining personal calm throughout your busy day or as a physical anchor to hold during your meditation practice.",
+    "prod_water": "AMRIT JAL SHUDDHI SET (₹599–₹999)\n\nDrawing from Ayurvedic wisdom, this set helps you create naturally structured, shungite-infused water. Shungite is naturally rich in C60 fullerenes, historically celebrated for purifying water and life energy.\n\nIncludes 200-300g raw washed chips and a pure copper coin to soak for 6–8 hours.",
     "prod_trishul": "TRISHUL SHIELD (₹699)\n\nMerging profound Shaivite symbolism with modern EMF mitigation. The Trishul Shield is a sleek, vertical shungite plate for your phone, beautifully engraved with a golden Trishul.\n\nIt acts as a powerful daily reminder of inner strength while grounding 2-billion-year-old shungite against your device.",
     "prod_pendant": "SHILA RAKSHA PENDANT — OM (₹599–₹899)\n\nKeep the grounding power of the Primordial Stone close to your heart center. This polished shungite pendant features a golden OM engraving, offering deep personal protection against the overwhelming electromagnetic tension of the modern world.\n\nIncludes a fully adjustable, durable cord.",
 
     "rec_emf": "It sounds like you're feeling the heavy weight of digital fatigue. Our devices emit constant electromagnetic frequencies that deeply drain us. Because shungite contains rare C60 fullerenes, it is beautifully capable of absorbing and grounding this tension.\n\nTo reclaim your digital wellness, I highly recommend:\n1. Kavach Shield\n2. Trishul Shield\n3. Pendant",
-    "rec_vastu": "Creating a harmonious home or workspace is essential. In Vastu Shastra, grounding unstable energy brings lasting peace. Shungite’s incredibly dense, ancient structure makes it the perfect energetic anchor for any room.\n\nFor beautiful spatial harmony, I recommend:\n1. Vastu Dosh Pyramid",
+    "rec_vastu": "Creating a harmonious home or workspace is essential. In Vastu Shastra, grounding unstable energy brings lasting peace. Shungite’s incredibly dense, ancient structure makes it the perfect energetic anchor for any room.\n\nFor beautiful spatial harmony, I recommend:\n1. Vastu Dosh Pyramid\n2. Kali Yuga Lingam",
     "rec_meditation": "Deepening a meditation practice requires a quiet, grounded mind. Shungite acts as a deeply reassuring physical anchor, gently pulling scattered and anxious energy downward so you can find your center.\n\nTo support your spiritual practice, I recommend:\n1. Raksha Mala\n2. Pendant",
     "rec_gifting": "Sharing AdiShila artifacts is a profound way to show you care. They offer not just elegance, but a lifetime of wellness support, arriving beautifully packaged to delight your loved ones.\n\nOur most heartfelt gifting options are:\n1. Raksha Mala\n2. Pendant\n3. Amrit Jal Set",
     "rec_office": "Modern workspaces are unfortunately flooded with invisible WiFi and digital tension. You need tools that protect and ground your energy without cluttering your environment.\n\nFor a truly protected office setup, I recommend:\n1. Vastu Dosh Pyramid\n2. Kavach Shield",
@@ -311,13 +311,14 @@ STATIC_RESPONSES = {
     "faq_how_it_works": "HOW DOES SHUNGITE SUPPORT YOU?\n\nShungite is an ancient mineraloid composed largely of carbon, representing one of the only known natural sources of fullerenes (C60). \n\nWhile science continues to explore its unique conductive properties, for centuries it has been used in wellness traditions to structure water and, in modern times, to absorb and ground chaotic electromagnetic frequencies.",
     "faq_shipping_returns": "SHIPPING & RETURNS\n\n• Delivery takes a gentle 5–7 business days across India.\n• We offer free shipping on journeys over ₹10,000.\n• If an item arrives hurt or damaged, we replace it immediately if reported within 48 hours.\n• Due to the deeply personal energetic nature of these tools, standard returns are lovingly handled on a case-by-case basis.",
     
-    "wholesale_moq": "MOQ:\n- 25 pcs per SKU (first order)\n- 10 pcs per SKU (reorders)\n- Mix-and-match allowed\n\nWHOLESALE PRICING:\n- Kavach / Trishul: ₹180\n- Pyramid: ₹350\n- Mala: ₹150\n- Amrit Jal / Pendant: ₹200",
+    "wholesale_moq": "MOQ:\n- 25 pcs per SKU (first order)\n- 10 pcs per SKU (reorders)\n- Mix-and-match allowed\n\nWHOLESALE PRICING:\n- Kavach / Trishul: ₹180\n- Lingam: ₹450\n- Pyramid: ₹350\n- Mala: ₹150\n- Amrit Jal / Pendant: ₹200",
     "wholesale_sample": "We love connecting with serious retail partners. Samples are available. Please email info@adishila.in with your wonderful store details.",
     "wholesale_margin": "Our retail partners enjoy truly exceptional margins, ranging from 65% to 81%, making an AdiShila partnership highly rewarding for wellness centers and boutiques alike.",
     "wholesale_shipping": "- Pan-India shipping (5–7 business days)\n- Free shipping above ₹10,000\n- First order: 100% advance\n- Reorders: 50% advance",
     "wholesale_partnership": "We would love to welcome you to the family. To become an official stockist, please email info@adishila.in with:\n\n- Business Name & Location\n- Product Interest\n- Estimated Quantity\n\nOur partnership director will contact you directly.",
 
     "usage_kavach": "Kavach Shield: Gently clean the back of your phone or case. Remove the protective film from the 3M adhesive and press it firmly for 10 seconds to secure its grounding energy.",
+    "usage_lingam": "Kali Yuga Lingam: Lovingly place this sacred centerpiece in your Puja room. Its dense, 2-billion-year-old fullerene structure naturally grounds the energy of the space, requiring no special physical maintenance beyond a gentle wipe.",
     "usage_pyramid": "Vastu Pyramid: For the deepest energetic impact, lovingly place it in the South-West corner of your home, directly on your desk, or right next to your WiFi router.",
     "usage_mala": "Mala: The elastic cord allows for gentle wrist wear. Keep it close during the day to stay grounded, or hold it intentionally during your meditation.",
     "usage_water": "Water Set: Rinse the chips thoroughly under running water. Place them in a glass or copper vessel, fill with drinking water, and let it rest peacefully for 6–8 hours before enjoying.",
@@ -330,11 +331,12 @@ STATIC_RESPONSES = {
 RELATED = {
     "track_order": ["shipping_info", "cancel_order"],
     "prod_kavach": ["prod_trishul", "rec_emf"],
+    "prod_lingam": ["rec_vastu", "prod_pyramid"],
     "prod_pyramid": ["rec_vastu", "rec_office"],
     "return_refund": ["damaged_item"],
     "faq_credibility": ["faq_authentic", "faq_how_it_works"],
     "rec_emf": ["prod_kavach", "prod_trishul"],
-    "rec_vastu": ["prod_pyramid"]
+    "rec_vastu": ["prod_pyramid", "prod_lingam"]
 }
 
 # --- SMART DETERMINISTIC ROUTER ---
@@ -379,11 +381,12 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
 
     elif ctx == "products":
         if is_match(msg, ["1", "kavach shield", "kavach"]): return "prod_kavach"
-        if is_match(msg, ["2", "pyramid", "vastu pyramid"]): return "prod_pyramid"
-        if is_match(msg, ["3", "mala", "raksha mala"]): return "prod_mala"
-        if is_match(msg, ["4", "water set", "amrit jal"]): return "prod_water"
-        if is_match(msg, ["5", "trishul", "trishul shield"]): return "prod_trishul"
-        if is_match(msg, ["6", "pendant", "om pendant"]): return "prod_pendant"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam"]): return "prod_lingam"
+        if is_match(msg, ["3", "pyramid", "vastu pyramid"]): return "prod_pyramid"
+        if is_match(msg, ["4", "mala", "raksha mala"]): return "prod_mala"
+        if is_match(msg, ["5", "water set", "amrit jal"]): return "prod_water"
+        if is_match(msg, ["6", "trishul", "trishul shield"]): return "prod_trishul"
+        if is_match(msg, ["7", "pendant", "om pendant"]): return "prod_pendant"
 
     elif ctx == "recommendations":
         if is_match(msg, ["1", "emf", "emf protection", "emf wellness", "digital detox"]): return "rec_emf"
@@ -402,11 +405,12 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
 
     elif ctx == "usage":
         if is_match(msg, ["1", "kavach", "kavach shield"]): return "usage_kavach"
-        if is_match(msg, ["2", "pyramid", "placing the pyramid"]): return "usage_pyramid"
-        if is_match(msg, ["3", "mala", "wearing the mala"]): return "usage_mala"
-        if is_match(msg, ["4", "water set", "water", "preparing the water set"]): return "usage_water"
-        if is_match(msg, ["5", "pendant", "wearing the pendant"]): return "usage_pendant"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam"]): return "usage_lingam"
+        if is_match(msg, ["3", "pyramid", "placing the pyramid"]): return "usage_pyramid"
+        if is_match(msg, ["4", "mala", "wearing the mala"]): return "usage_mala"
+        if is_match(msg, ["5", "water set", "water", "preparing the water set"]): return "usage_water"
         if is_match(msg, ["6", "trishul", "trishul shield", "using the trishul shield"]): return "usage_trishul"
+        if is_match(msg, ["7", "pendant", "wearing the pendant"]): return "usage_pendant"
 
     elif ctx == "faq":
         if is_match(msg, ["1", "why choose adishila", "credibility", "why adishila"]): return "faq_credibility"
@@ -429,6 +433,7 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
     if is_match(msg, ["shipping", "delivery"]): return "shipping_info"
 
     if is_match(msg, ["kavach", "kavach shield"]): return "prod_kavach"
+    if is_match(msg, ["lingam", "kali yuga lingam", "shiva lingam"]): return "prod_lingam"
     if is_match(msg, ["pyramid", "vastu pyramid"]): return "prod_pyramid"
     if is_match(msg, ["mala", "raksha mala"]): return "prod_mala"
     if is_match(msg, ["water set", "amrit jal"]): return "prod_water"
@@ -480,7 +485,7 @@ async def analytics_summary(api_key: str = Security(verify_admin_key)):
         return {"total_events": 0}
 
     cutoff = time.time() - 7 * 24 * 3600
-    recent = [e for e in events if e.get("timestamp", 0) >= cutoff] or events  # fallback: all
+    recent = [e for e in events if e.get("timestamp", 0) >= cutoff] or events  
 
     total = len(recent)
     modes = {}
@@ -500,7 +505,7 @@ async def analytics_summary(api_key: str = Security(verify_admin_key)):
         if e.get("frustration_level", 0) >= 2:
             frustration_events += 1
         if e.get("event_type") == "csat_rating" and e.get("intent") == "feedback":
-            pass  # score not stored in event yet
+            pass 
         rt = e.get("response_time_ms")
         if rt:
             response_times.append(rt)
@@ -569,8 +574,6 @@ async def chat_endpoint(
         state.language = detect_language_safe(body.message)
         turn_frustration = calculate_frustration_score(body.message)
         state.frustration_signals += turn_frustration
-        # Decay: calm turns gradually reduce the frustration counter so one
-        # venting message doesn't permanently lock the user into escalation.
         if turn_frustration == 0 and state.frustration_signals > 0:
             state.frustration_signals = max(0, state.frustration_signals - 1)
 
@@ -606,7 +609,7 @@ async def chat_endpoint(
                 suggestions = " | ".join(f"**{format_suggestion(r)}**" for r in RELATED[intent])
                 base_response += f"\n\n─────\nExplore further on your wellness journey:\n{suggestions}"
             
-            # UNIFIED INJECTION CONTROL: Appends navigational markers to all non-root menus safely
+            # UNIFIED INJECTION CONTROL
             if "menu_main" not in intent:
                 base_response += "\n\n← Back | ⌂ Main Menu"
 
@@ -614,7 +617,7 @@ async def chat_endpoint(
             return {"mode": "structured", "response": base_response}
 
         # --- AI FALLBACK (NEW GOOGLE GENAI SDK) ---
-        inactivity_reset = (time.time() - state.last_activity) > 1800  # 30 min idle
+        inactivity_reset = (time.time() - state.last_activity) > 1800  
         state.last_activity = time.time()
         if state.chat is None or state.turn_count % 50 == 0 or inactivity_reset:
             state.chat = ai_client.chats.create(model="gemini-2.5-flash", config=chat_config)
@@ -671,7 +674,6 @@ async def chat_endpoint(
             state.response_hashes.append(resp_hash)
             state.response_hash_set.add(resp_hash)
 
-            # Store in AI cache (skip very short or personalised replies)
             if len(response_text) > 80:
                 ai_response_cache[cache_key] = response_text
 
