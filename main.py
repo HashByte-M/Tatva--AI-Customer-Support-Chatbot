@@ -660,6 +660,16 @@ async def chat_endpoint(
 
         if state.csat_awaiting:
             state.csat_awaiting = False
+            
+            # Extract CSAT score (1-5) from the message, default to 5
+            match = re.search(r'[1-5]', body.message)
+            csat_score = int(match.group(0)) if match else 5
+            state.callback_data["csat"] = csat_score
+            
+            # If there's no ticket ID (orphan CSAT), generate one
+            if not state.callback_data.get("ticket_id"):
+                state.callback_data["ticket_id"] = generate_ticket_id()
+            
             log_analytics(ChatEvent("csat_rating", state.session_id, "csat", "feedback", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
             asyncio.create_task(asyncio.to_thread(send_webhook, state, "csat_completed"))
             return finalize_response(state, "csat_complete", "Thank you so much for sharing your feedback with me! Is there anything else I can guide you with?\n\n← Back | ⌂ Main Menu")
@@ -743,6 +753,11 @@ async def chat_endpoint(
         if intent == "start_callback_flow":
             state.in_callback_flow = True
             state.callback_step = "name"
+            
+            # Reset callback data if a previous request was already completed in this session
+            if "reason" in state.callback_data or "csat" in state.callback_data:
+                state.callback_data = {}
+                
             log_analytics(ChatEvent("message", state.session_id, "structured", "start_callback_flow", state.language, len(body.message), int((time.time() - start_time)*1000), state.frustration_signals, state.turn_count))
             return finalize_response(state, "structured", "I would be honored to arrange a callback with one of our human guides. To ensure they are fully prepared for your journey, I have just a few quick questions.\n\nFirstly, what is your name? (Or say 'cancel' to return to the menu)")
 
