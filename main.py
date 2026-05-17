@@ -294,14 +294,13 @@ def send_webhook(state: SessionState, trigger_event: str):
     webhook_url = os.getenv("WEBHOOK_URL")
     if not webhook_url:
         return
+    
     payload = {
         "event": trigger_event,
         "session_id": state.session_id,
         "callback_data": state.callback_data,
         "frustration_score": state.frustration_signals,
-        "turn_count": state.turn_count,
-        "language": state.language,
-        "chat_history": state.chat_history
+        "language": state.language
     }
     try:
         req = urllib.request.Request(
@@ -317,8 +316,8 @@ def send_webhook(state: SessionState, trigger_event: str):
 def finalize_response(state: SessionState, mode: str, response_text: str) -> dict:
     """Centralizes response appending and sending to frontend."""
     state.chat_history.append({"role": "bot", "text": response_text})
-    if len(state.chat_history) > 40:
-        state.chat_history = state.chat_history[-40:]
+    if len(state.chat_history) > 100:
+        state.chat_history = state.chat_history[-100:]
     return {"mode": mode, "response": response_text}
 
 # --- STATIC RESPONSES ---
@@ -645,8 +644,8 @@ async def chat_endpoint(
 
         state.turn_count += 1
         state.chat_history.append({"role": "user", "text": body.message})
-        if len(state.chat_history) > 40:
-            state.chat_history = state.chat_history[-40:]
+        if len(state.chat_history) > 100:
+            state.chat_history = state.chat_history[-100:]
         
         if len(state.unique_intents) > 15 and state.session_age_seconds < 60:
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
