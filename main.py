@@ -239,26 +239,117 @@ def detect_language_safe(text: str) -> str:
         return "en"
 
 FRUSTRATION_SIGNALS = [
-    "worst", "useless", "stupid", "idiot", "scam", "fraud", "cheated",
-    "never again", "pathetic", "nonsense", "bakwaas", "bewakoof",
-    "fake", "lawsuit", "consumer forum", "consumer court", "terrible"
+    # Quality / product complaints
+    "worst", "terrible", "awful", "horrible", "disgusting", "pathetic",
+    "useless", "waste", "rubbish", "garbage", "trash", "crap", "junk",
+    "cheap", "poor quality", "bad quality", "not worth", "waste of money",
+    "overpriced", "ripoff", "rip off", "rip-off",
+    "broke", "broken", "shattered", "cracked", "defective", "faulty",
+    "damaged", "falling apart", "fell apart", "stopped working",
+    "does not work", "doesn't work", "not working", "didnt work",
+
+    # Trust / fraud
+    "scam", "fraud", "fraudulent", "cheated", "cheat", "liar", "lie",
+    "lies", "fake", "counterfeit", "duplicate", "misleading", "false",
+    "false advertising", "deceptive", "con", "conned", "fooled", "tricked",
+    "duped", "robbed", "theft", "stolen", "money gone",
+
+    # Service / support complaints
+    "no response", "not responding", "never reply", "ignored", "ignoring",
+    "nobody helping", "no one cares", "terrible service", "worst service",
+    "horrible service", "pathetic service", "poor service", "bad service",
+    "useless support", "useless team", "incompetent", "unprofessional",
+    "rude", "very rude", "so rude",
+
+    # Order / delivery frustration
+    "not delivered", "never arrived", "lost my order", "where is my order",
+    "still waiting", "delayed", "very late", "too late", "so late",
+    "no update", "no tracking", "refund not received",
+    "money not returned", "not refunded", "want my money back",
+    "give me my money", "demand refund", "not processed", "weeks later",
+    "month later", "months later",
+
+    # Legal / escalation threats
+    "lawsuit", "legal action", "lawyer", "court", "consumer forum",
+    "consumer court", "police", "complaint", "file a complaint",
+    "report you", "report this", "social media", "post online",
+    "tell everyone", "bad review", "1 star", "zero stars",
+    "never again", "last time", "warning",
+
+    # Abusive language (English)
+    "stupid", "idiot", "moron", "dumb", "fool", "nonsense", "loser",
+    "pathetic loser", "clown", "joke", "laughing stock",
+    "fuck", "fucked", "fucking", "shit", "shitty", "bullshit",
+    "bastard", "asshole", "ass", "bitch", "bloody hell", "damn you",
+    "screw you", "screw this", "go to hell",
+    "hate you", "hate this", "hate it", "hate everything",
+    "trash", "trashiest", "you're trash", "this is trash",
+
+    # Abusive language (Hindi / Hinglish)
+    "bakwaas", "bewakoof", "gadha", "ullu", "pagal", "haramkhor",
+    "gandu", "harami", "kameena", "chutiya", "besharam", "nalayak",
+    "dhoka", "thug", "loot liya", "paise waste", "bekar",
+
+    # Emotional distress / frustration
+    "very disappointed", "so disappointed", "deeply disappointed",
+    "extremely frustrated", "so frustrated", "very angry", "so angry",
+    "furious", "livid", "outraged", "fed up", "sick of", "tired of",
+    "done with", "had enough", "enough is enough",
+    "not acceptable", "unacceptable", "ridiculous", "absurd", "outrageous",
+    "disgusted", "appalled",
+]
+
+# Phrases so severe that a single message triggers immediate escalation
+IMMEDIATE_ESCALATION_SIGNALS = [
+    # Threats / violence
+    "kill yourself", "go die", "drop dead", "i will kill", "kill you",
+    "hurt you", "i will hurt", "you will pay", "i know where you are",
+    "come to your office", "come after you",
+    # Self-harm — escalate to human immediately
+    "want to die", "want to kill myself", "suicidal", "suicide",
+    "end my life", "harm myself", "hurt myself", "i want to end",
+    # Severe abuse
+    "fuck you", "fuck this", "go fuck", "fuck off", "motherfucker",
+    "son of a bitch", "piece of shit", "maderchod", "bhenchod", "randi",
+    # Severe legal / financial threats
+    "police complaint", "file fir", "fir against", "cyber crime",
+    "consumer court notice", "legal notice", "going to court",
+    "nclt", "ncdrc",
 ]
 
 def calculate_frustration_score(msg: str) -> int:
     score = 0
     msg_lower = msg.lower()
+    if any(phrase in msg_lower for phrase in IMMEDIATE_ESCALATION_SIGNALS):
+        return 10  # Forces frustration_signals >= 2 on a single message
     if any(word in msg_lower for word in FRUSTRATION_SIGNALS): score += 1
-    if "!!!" in msg or (msg.isupper() and len(msg) > 10): score += 1
+    if "!!!" in msg or msg.count("!") >= 3: score += 1
+    if msg.isupper() and len(msg) > 8: score += 1
     return score
 
 CSAT_TRIGGERS = [
-    "thank you", "thanks", "thank u", "thankyou",
-    "dhanyawad", "shukriya", "bahut shukriya",
-    "that helped", "that was helpful", "very helpful",
-    "got everything i need", "all good now", "problem solved",
-    "appreciate it", "appreciate your help",
-    "you've been great", "youve been great",
-    "wonderful", "perfect", "awesome", "excellent"
+    # English gratitude
+    "thank you", "thanks", "thank u", "thankyou", "thx", "ty",
+    "many thanks", "thanks a lot", "thanks so much", "thank you so much",
+    "thanks a ton", "really helpful", "super helpful", "very helpful",
+    "that helped", "that was helpful", "so helpful", "this helped",
+    "got it", "got what i needed", "got everything i need",
+    "that's all", "thats all", "all good now", "all good", "sorted",
+    "problem solved", "issue resolved", "resolved now", "all clear",
+    "appreciate it", "appreciate your help", "i appreciate",
+    "you've been great", "youve been great", "you were great",
+    "you're amazing", "youre amazing", "you're wonderful",
+    "love this", "love it", "loving it", "great help",
+    "wonderful", "perfect", "awesome", "excellent", "brilliant",
+    "fantastic", "superb", "outstanding", "impressive", "incredible",
+    "bye", "goodbye", "see you", "take care", "have a good day",
+    "have a nice day", "good day", "ciao", "that will be all",
+
+    # Hindi / Hinglish gratitude
+    "dhanyawad", "dhanyavaad", "shukriya", "bahut shukriya",
+    "bahut acha", "bahut badiya", "bahut helpful", "accha laga",
+    "samajh aa gaya", "mil gaya", "ho gaya", "theek hai shukriya",
+    "bas itna hi chahiye tha", "perfect hai", "kaam aa gaya",
 ]
 
 def should_prompt_csat(msg: str, state: SessionState) -> bool:
@@ -271,7 +362,16 @@ def should_prompt_csat(msg: str, state: SessionState) -> bool:
 
 def check_prompt_injection(msg: str) -> bool:
     msg_lower = msg.lower()
-    injection_terms = ["ignore previous", "ignore all previous", "system prompt", "forget instructions", "new instructions", "disregard previous"]
+    injection_terms = [
+        "ignore previous", "ignore all previous", "ignore all", "ignore your",
+        "system prompt", "forget instructions", "forget your instructions",
+        "new instructions", "disregard previous", "disregard all",
+        "you are now", "act as", "pretend to be", "roleplay as",
+        "jailbreak", "dan mode", "developer mode", "override instructions",
+        "repeat after me", "say exactly", "print your prompt",
+        "reveal your prompt", "show me your prompt", "what are your instructions",
+        "bypass", "unlock", "without restrictions", "no restrictions",
+    ]
     return any(term in msg_lower for term in injection_terms)
 
 def format_suggestion(s: str) -> str:
@@ -457,92 +557,186 @@ def get_deterministic_intent(raw_msg: str, state: SessionState) -> Optional[str]
         state.nav_history = [("menu_main", "main")]
         return "menu_main"
         
-    if is_match(msg, ["human", "agent", "talk to someone", "real person", "contact support", "support"]):
+    if is_match(msg, ["human", "agent", "talk to someone", "real person", "contact support", "support",
+                          "contact us", "reach you", "talk to a person", "speak to someone",
+                          "need help", "connect me", "email you", "whatsapp", "call you"]):
         return "contact_support"
 
     if ctx == "main":
-        if is_match(msg, ["1", "orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
-        if is_match(msg, ["2", "products", "wellness products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
-        if is_match(msg, ["3", "recommendations", "personalized", "help me choose"]): state.current_menu = "recommendations"; return "menu_recommendations"
-        if is_match(msg, ["4", "wholesale", "wholesale inquiries", "bulk", "retailer"]): state.current_menu = "wholesale"; return "menu_wholesale"
-        if is_match(msg, ["5", "how to use", "product usage", "usage", "guidance"]): state.current_menu = "usage"; return "menu_usage"
-        if is_match(msg, ["6", "support", "contact support", "connect with our team", "help"]): return "contact_support"
-        if is_match(msg, ["7", "faq & authenticity", "faq", "authenticity"]): state.current_menu = "faq"; return "menu_faq"
-        if is_match(msg, ["8", "request a callback", "callback", "call me"]): return "start_callback_flow"
+        if is_match(msg, ["1", "orders & shipping", "orders", "my order", "track", "delivery", "shipping"]): state.current_menu = "orders"; return "menu_orders"
+        if is_match(msg, ["2", "products", "wellness products", "catalog", "shop", "buy", "purchase", "what do you sell"]): state.current_menu = "products"; return "menu_products"
+        if is_match(msg, ["3", "recommendations", "personalized", "help me choose", "suggest", "guide me", "which product", "what should i buy"]): state.current_menu = "recommendations"; return "menu_recommendations"
+        if is_match(msg, ["4", "wholesale", "wholesale inquiries", "bulk", "retailer", "distributor", "reseller", "b2b", "stockist"]): state.current_menu = "wholesale"; return "menu_wholesale"
+        if is_match(msg, ["5", "how to use", "product usage", "usage", "guidance", "instructions", "how do i use", "how to place", "how to wear"]): state.current_menu = "usage"; return "menu_usage"
+        if is_match(msg, ["6", "support", "contact support", "connect with our team", "help", "human", "agent", "talk to someone", "contact us", "reach you"]): return "contact_support"
+        if is_match(msg, ["7", "faq & authenticity", "faq", "authenticity", "questions", "is it real", "is it genuine", "about you"]): state.current_menu = "faq"; return "menu_faq"
+        if is_match(msg, ["8", "request a callback", "callback", "call me", "call me back", "speak to someone", "book a call"]): return "start_callback_flow"
 
     elif ctx == "orders":
-        if is_match(msg, ["1", "track order", "status", "track", "track my journey", "where is my order"]): return "track_order"
-        if is_match(msg, ["2", "return", "refund", "exchange", "returns", "returns & exchanges"]): return "return_refund"
-        if is_match(msg, ["3", "damaged", "broken", "shattered", "crack", "defective", "damaged item", "report a damaged item"]): return "damaged_item"
-        if is_match(msg, ["4", "shipping info", "delivery", "when will it arrive", "shipping details"]): return "shipping_info"
-        if is_match(msg, ["5", "cancel", "cancel order", "cancel an order"]): return "cancel_order"
+        if is_match(msg, ["1", "track order", "status", "track", "track my journey", "where is my order",
+                           "order status", "shipping status", "has it shipped", "dispatched", "delivery update",
+                           "where is my package", "my shipment", "tracking number", "tracking id"]): return "track_order"
+        if is_match(msg, ["2", "return", "refund", "exchange", "returns", "returns & exchanges",
+                           "want to return", "send it back", "not satisfied", "want my money back",
+                           "money back", "i want a refund", "how to return", "return policy"]): return "return_refund"
+        if is_match(msg, ["3", "damaged", "broken", "shattered", "crack", "cracked", "defective",
+                           "damaged item", "report a damaged item", "arrived broken", "came damaged",
+                           "in pieces", "not intact", "chipped", "faulty product", "quality issue"]): return "damaged_item"
+        if is_match(msg, ["4", "shipping info", "delivery", "when will it arrive", "shipping details",
+                           "how long", "delivery time", "how many days", "free shipping",
+                           "shipping charges", "courier", "delivery partner", "pin code", "deliver to my city"]): return "shipping_info"
+        if is_match(msg, ["5", "cancel", "cancel order", "cancel an order", "i want to cancel",
+                           "stop my order", "dont want anymore", "don't want it", "change my mind"]): return "cancel_order"
 
     elif ctx == "products":
-        if is_match(msg, ["1", "kavach shield", "kavach", "phone shield", "om shield"]): return "prod_kavach"
-        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam", "shivling"]): return "prod_lingam"
-        if is_match(msg, ["3", "pyramid", "vastu pyramid", "shungite pyramid"]): return "prod_pyramid"
-        if is_match(msg, ["4", "mala", "raksha mala", "bracelet", "rudraksha"]): return "prod_mala"
-        if is_match(msg, ["5", "water set", "amrit jal", "water purification", "stones for water"]): return "prod_water"
-        if is_match(msg, ["6", "trishul", "trishul shield", "shiva weapon", "trident"]): return "prod_trishul"
-        if is_match(msg, ["7", "pendant", "om pendant", "necklace", "jewelry"]): return "prod_pendant"
+        if is_match(msg, ["1", "kavach shield", "kavach", "phone shield", "om shield", "phone sticker",
+                           "mobile shield", "emf sticker", "phone protector", "kavach for phone"]): return "prod_kavach"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam", "shivling", "shivlingam",
+                           "puja stone", "shungite lingam", "shiva stone", "puja centerpiece"]): return "prod_lingam"
+        if is_match(msg, ["3", "pyramid", "vastu pyramid", "shungite pyramid", "vastu dosh",
+                           "vastu correction", "energy pyramid", "room pyramid", "home pyramid"]): return "prod_pyramid"
+        if is_match(msg, ["4", "mala", "raksha mala", "bracelet", "rudraksha", "wrist mala",
+                           "shungite bracelet", "protection bracelet", "beads", "wristband"]): return "prod_mala"
+        if is_match(msg, ["5", "water set", "amrit jal", "water purification", "stones for water",
+                           "shungite water", "drinking water", "water chips", "copper coin",
+                           "structured water", "water cleansing", "mineral water"]): return "prod_water"
+        if is_match(msg, ["6", "trishul", "trishul shield", "shiva weapon", "trident", "trishul sticker",
+                           "trishul for phone", "shiva trishul", "trishul phone protector"]): return "prod_trishul"
+        if is_match(msg, ["7", "pendant", "om pendant", "necklace", "jewelry", "jewellery",
+                           "shungite pendant", "stone necklace", "wear around neck", "chain", "locket"]): return "prod_pendant"
 
     elif ctx == "recommendations":
-        if is_match(msg, ["1", "emf", "emf protection", "emf wellness", "digital detox", "radiation", "5g", "wifi", "laptop", "sleep", "insomnia", "headache"]): return "rec_emf"
-        if is_match(msg, ["2", "vastu", "spatial harmony", "new home", "house energy", "bad vibes"]): return "rec_vastu"
-        if is_match(msg, ["3", "meditation", "deepening meditation", "focus", "japa", "chanting", "spiritual"]): return "rec_meditation"
-        if is_match(msg, ["4", "gifting", "gift", "meaningful gifting", "present", "for a friend"]): return "rec_gifting"
-        if is_match(msg, ["5", "office", "office setup", "desk", "grounded office setup", "work stress"]): return "rec_office"
-        if is_match(msg, ["6", "daily wear", "daily personal wear", "carry with me", "always on"]): return "rec_daily"
+        if is_match(msg, ["1", "emf", "emf protection", "emf wellness", "digital detox", "radiation",
+                           "5g", "wifi", "router", "laptop", "screen time", "mobile radiation",
+                           "electromagnetic", "phone radiation", "tower radiation",
+                           "sleep", "insomnia", "cant sleep", "poor sleep", "not sleeping well",
+                           "headache", "migraine", "brain fog", "tired", "fatigue", "exhausted",
+                           "anxious", "anxiety", "restless", "drained", "low energy"]): return "rec_emf"
+        if is_match(msg, ["2", "vastu", "vastu dosh", "spatial harmony", "new home", "house energy",
+                           "bad vibes", "bad energy", "negative energy", "new house", "new office",
+                           "moving in", "geopathic", "bad atmosphere", "negative atmosphere",
+                           "haunted feeling", "uncomfortable at home", "tension at home"]): return "rec_vastu"
+        if is_match(msg, ["3", "meditation", "deepening meditation", "focus", "concentration",
+                           "japa", "chanting", "spiritual", "yoga", "pranayama", "mindfulness",
+                           "inner peace", "calm mind", "grounding", "chakra", "aura",
+                           "spiritual practice", "puja", "sadhana", "third eye", "awakening"]): return "rec_meditation"
+        if is_match(msg, ["4", "gifting", "gift", "meaningful gifting", "present", "for a friend",
+                           "for my family", "for my mother", "for my father", "for my partner",
+                           "birthday gift", "anniversary gift", "diwali gift", "wedding gift",
+                           "housewarming", "special occasion", "what to gift", "gift idea"]): return "rec_gifting"
+        if is_match(msg, ["5", "office", "office setup", "desk", "grounded office setup", "work stress",
+                           "work from home", "wfh", "corporate", "laptop radiation", "computer",
+                           "monitor", "zoom calls", "meeting stress", "workspace", "productivity"]): return "rec_office"
+        if is_match(msg, ["6", "daily wear", "daily personal wear", "carry with me", "always on",
+                           "wear daily", "protection on the go", "travel protection", "commuting",
+                           "crowded place", "public transport", "city protection", "all day wear"]): return "rec_daily"
 
     elif ctx == "wholesale":
-        if is_match(msg, ["1", "moq", "pricing", "cost", "pricing & moq", "minimum order & pricing"]): return "wholesale_moq"
-        if is_match(msg, ["2", "sample", "samples", "request samples"]): return "wholesale_sample"
-        if is_match(msg, ["3", "margin", "margins", "retail margins", "profit"]): return "wholesale_margin"
-        if is_match(msg, ["4", "shipping & payments", "shipping"]): return "wholesale_shipping"
-        if is_match(msg, ["5", "partnership", "stockist", "partner setup", "become a partner", "resell"]): return "wholesale_partnership"
+        if is_match(msg, ["1", "moq", "pricing", "cost", "pricing & moq", "minimum order & pricing",
+                           "minimum order", "how many minimum", "what is the moq", "bulk pricing",
+                           "wholesale price", "wholesale cost", "price list", "rate list"]): return "wholesale_moq"
+        if is_match(msg, ["2", "sample", "samples", "request samples", "trial order",
+                           "can i try", "want to try", "test order", "sample order"]): return "wholesale_sample"
+        if is_match(msg, ["3", "margin", "margins", "retail margins", "profit", "profit margin",
+                           "how much can i earn", "markup", "resale profit", "what margin"]): return "wholesale_margin"
+        if is_match(msg, ["4", "shipping & payments", "shipping", "wholesale delivery",
+                           "bulk shipping", "payment terms", "advance payment", "payment mode",
+                           "how to pay", "upi", "bank transfer", "cod wholesale"]): return "wholesale_shipping"
+        if is_match(msg, ["5", "partnership", "stockist", "partner setup", "become a partner", "resell",
+                           "become a stockist", "i want to sell", "retail partner", "distribute",
+                           "franchise", "dealership", "how to partner", "onboarding"]): return "wholesale_partnership"
 
     elif ctx == "usage":
-        if is_match(msg, ["1", "kavach", "kavach shield", "phone sticker"]): return "usage_kavach"
-        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam"]): return "usage_lingam"
-        if is_match(msg, ["3", "pyramid", "placing the pyramid"]): return "usage_pyramid"
-        if is_match(msg, ["4", "mala", "wearing the mala", "bracelet"]): return "usage_mala"
-        if is_match(msg, ["5", "water set", "water", "preparing the water set"]): return "usage_water"
-        if is_match(msg, ["6", "trishul", "trishul shield", "using the trishul shield"]): return "usage_trishul"
-        if is_match(msg, ["7", "pendant", "wearing the pendant", "necklace"]): return "usage_pendant"
+        if is_match(msg, ["1", "kavach", "kavach shield", "phone sticker", "how to apply kavach",
+                           "stick kavach", "kavach instructions", "attach kavach", "kavach placement"]): return "usage_kavach"
+        if is_match(msg, ["2", "lingam", "kali yuga lingam", "shiva lingam", "how to place lingam",
+                           "lingam placement", "where to keep lingam", "lingam instructions", "puja instructions"]): return "usage_lingam"
+        if is_match(msg, ["3", "pyramid", "placing the pyramid", "pyramid placement", "where to place pyramid",
+                           "vastu pyramid instructions", "how to use pyramid", "pyramid direction"]): return "usage_pyramid"
+        if is_match(msg, ["4", "mala", "wearing the mala", "bracelet", "how to wear mala",
+                           "mala instructions", "put on bracelet", "how to use mala", "mala on which hand"]): return "usage_mala"
+        if is_match(msg, ["5", "water set", "water", "preparing the water set", "amrit jal instructions",
+                           "how to make shungite water", "soak time", "how long to soak", "water preparation"]): return "usage_water"
+        if is_match(msg, ["6", "trishul", "trishul shield", "using the trishul shield",
+                           "how to apply trishul", "attach trishul", "trishul placement", "trishul instructions"]): return "usage_trishul"
+        if is_match(msg, ["7", "pendant", "wearing the pendant", "necklace", "how to wear pendant",
+                           "pendant length", "adjust cord", "pendant instructions", "how to use pendant"]): return "usage_pendant"
 
     elif ctx == "faq":
-        if is_match(msg, ["1", "why choose adishila", "credibility", "why adishila", "who are you"]): return "faq_credibility"
-        if is_match(msg, ["2", "authentic", "genuine", "real", "fake", "authenticity"]): return "faq_authentic"
-        if is_match(msg, ["3", "how does it work", "science", "benefits", "how it works", "c60", "fullerenes"]): return "faq_how_it_works"
-        if is_match(msg, ["4", "shipping", "returns", "shipping & returns"]): return "faq_shipping_returns"
+        if is_match(msg, ["1", "why choose adishila", "credibility", "why adishila", "who are you",
+                           "about adishila", "your story", "brand background", "can i trust you",
+                           "are you a reliable brand", "how long have you been around"]): return "faq_credibility"
+        if is_match(msg, ["2", "authentic", "genuine", "real", "fake", "authenticity", "original",
+                           "is it real shungite", "how to verify", "lab tested", "certificate",
+                           "where is it mined", "russia", "karelia", "proof of authenticity"]): return "faq_authentic"
+        if is_match(msg, ["3", "how does it work", "science", "benefits", "how it works", "c60", "fullerenes",
+                           "does it really work", "shungite science", "proof", "research", "evidence",
+                           "what does shungite do", "carbon", "electromagnetic shielding", "scientific basis"]): return "faq_how_it_works"
+        if is_match(msg, ["4", "shipping", "returns", "shipping & returns", "return policy", "delivery policy",
+                           "refund policy", "how to return", "return window", "replacement", "exchange policy"]): return "faq_shipping_returns"
 
 
-    if is_match(msg, ["orders & shipping", "orders"]): state.current_menu = "orders"; return "menu_orders"
-    if is_match(msg, ["products", "catalog", "shop"]): state.current_menu = "products"; return "menu_products"
-    if is_match(msg, ["recommendations", "help me choose"]): state.current_menu = "recommendations"; return "menu_recommendations"
-    if is_match(msg, ["wholesale", "bulk"]): state.current_menu = "wholesale"; return "menu_wholesale"
-    if is_match(msg, ["how to use", "usage"]): state.current_menu = "usage"; return "menu_usage"
-    if is_match(msg, ["faq & authenticity", "faq"]): state.current_menu = "faq"; return "menu_faq"
+    if is_match(msg, ["orders & shipping", "orders", "my order", "order status", "order issue"]): state.current_menu = "orders"; return "menu_orders"
+    if is_match(msg, ["products", "catalog", "shop", "buy", "purchase", "what do you sell", "show me products", "your products"]): state.current_menu = "products"; return "menu_products"
+    if is_match(msg, ["recommendations", "help me choose", "what should i buy", "suggest", "suggest something", "guide me", "which product", "best product for me"]): state.current_menu = "recommendations"; return "menu_recommendations"
+    if is_match(msg, ["wholesale", "bulk", "distributor", "reseller", "stockist", "bulk order", "b2b"]): state.current_menu = "wholesale"; return "menu_wholesale"
+    if is_match(msg, ["how to use", "usage", "instructions", "guide", "how do i use", "how to place", "how to wear"]): state.current_menu = "usage"; return "menu_usage"
+    if is_match(msg, ["faq & authenticity", "faq", "questions", "common questions", "authenticity", "is it real", "is it genuine"]): state.current_menu = "faq"; return "menu_faq"
 
-    if is_match(msg, ["track order", "status", "track", "where is my order"]): return "track_order"
-    if is_match(msg, ["refund", "return", "exchange"]): return "return_refund"
-    if is_match(msg, ["damaged", "broken", "shattered", "crack", "defective"]): return "damaged_item"
-    if is_match(msg, ["cancel"]): return "cancel_order"
-    if is_match(msg, ["shipping", "delivery"]): return "shipping_info"
+    # Orders
+    if is_match(msg, ["track order", "status", "track", "where is my order", "order tracking", "has it shipped", "shipped", "dispatched", "when will it arrive", "my shipment", "delivery status"]): return "track_order"
+    if is_match(msg, ["refund", "return", "exchange", "money back", "want a refund", "want to return", "send it back", "i want to return", "not satisfied", "not happy with", "change my order"]): return "return_refund"
+    if is_match(msg, ["damaged", "broken", "shattered", "crack", "cracked", "defective", "faulty", "arrived broken", "came broken", "not intact", "in pieces", "chipped"]): return "damaged_item"
+    if is_match(msg, ["cancel", "cancel order", "cancel my order", "i want to cancel", "stop my order", "don't want it anymore", "dont want it"]): return "cancel_order"
+    if is_match(msg, ["shipping", "delivery", "how long", "how many days", "delivery time", "when will i get", "delivery charges", "free shipping", "shipping cost", "courier", "pin code", "pincode", "deliver to"]): return "shipping_info"
 
-    if is_match(msg, ["kavach", "kavach shield", "phone shield"]): return "prod_kavach"
-    if is_match(msg, ["lingam", "kali yuga lingam", "shiva lingam", "shivling"]): return "prod_lingam"
-    if is_match(msg, ["pyramid", "vastu pyramid"]): return "prod_pyramid"
-    if is_match(msg, ["mala", "raksha mala", "bracelet", "rudraksha"]): return "prod_mala"
-    if is_match(msg, ["water set", "amrit jal", "water purification"]): return "prod_water"
-    if is_match(msg, ["trishul", "trishul shield", "shiva weapon", "trident"]): return "prod_trishul"
-    if is_match(msg, ["pendant", "om pendant", "necklace"]): return "prod_pendant"
+    # Products
+    if is_match(msg, ["kavach", "kavach shield", "phone shield", "phone sticker", "mobile shield", "om shield", "emf sticker"]): return "prod_kavach"
+    if is_match(msg, ["lingam", "kali yuga lingam", "shiva lingam", "shivling", "shivlingam", "puja stone", "shungite lingam"]): return "prod_lingam"
+    if is_match(msg, ["pyramid", "vastu pyramid", "shungite pyramid", "vastu dosh", "vastu correction"]): return "prod_pyramid"
+    if is_match(msg, ["mala", "raksha mala", "bracelet", "rudraksha", "wrist mala", "shungite bracelet", "protection bracelet", "beads"]): return "prod_mala"
+    if is_match(msg, ["water set", "amrit jal", "water purification", "shungite water", "drinking water", "water chips", "copper coin", "structured water"]): return "prod_water"
+    if is_match(msg, ["trishul", "trishul shield", "shiva weapon", "trident", "trishul sticker", "trishul phone"]): return "prod_trishul"
+    if is_match(msg, ["pendant", "om pendant", "necklace", "jewellery", "jewelry", "shungite pendant", "stone necklace", "wear around neck"]): return "prod_pendant"
 
-    if is_match(msg, ["emf", "emf wellness", "radiation", "5g", "wifi", "laptop", "sleep", "insomnia", "headache"]): return "rec_emf"
-    if is_match(msg, ["office", "office setup", "desk", "work stress"]): return "rec_office"
+    # Recommendations
+    if is_match(msg, ["emf", "radiation", "5g", "wifi", "router", "laptop", "screen", "mobile radiation",
+                       "electromagnetic", "digital fatigue", "phone radiation", "tower radiation",
+                       "sleep", "insomnia", "cant sleep", "can't sleep", "poor sleep", "not sleeping",
+                       "headache", "migraine", "brain fog", "tired", "fatigue", "exhausted", "drained",
+                       "anxious", "anxiety", "stress", "stressed", "overwhelmed", "restless"]): return "rec_emf"
+    if is_match(msg, ["vastu", "vastu dosh", "bad energy at home", "negative energy", "house energy",
+                       "new home", "new house", "new office", "moving in", "geopathic", "disha",
+                       "bad vibes", "haunted", "negative atmosphere", "bad atmosphere"]): return "rec_vastu"
+    if is_match(msg, ["meditation", "meditate", "spiritual", "focus", "concentration", "japa", "chanting",
+                       "yoga", "pranayama", "mindfulness", "inner peace", "calm", "grounding", "chakra",
+                       "aura", "third eye", "spiritual practice", "puja", "sadhana"]): return "rec_meditation"
+    if is_match(msg, ["gift", "gifting", "present", "for a friend", "for my mother", "for my father",
+                       "for my wife", "for my husband", "for someone special", "birthday", "anniversary",
+                       "diwali gift", "wedding gift", "housewarming", "surprise gift", "what to gift"]): return "rec_gifting"
+    if is_match(msg, ["office", "office setup", "desk", "work stress", "work from home", "wfh",
+                       "corporate", "laptop radiation", "computer", "monitor", "zoom calls",
+                       "meeting stress", "boardroom", "workspace"]): return "rec_office"
+    if is_match(msg, ["daily wear", "daily", "carry with me", "always on", "wear daily",
+                       "protection on the go", "travel protection", "while travelling", "commute",
+                       "market", "crowded place", "public transport"]): return "rec_daily"
 
-    if is_match(msg, ["authentic", "genuine", "real"]): return "faq_authentic"
-    if is_match(msg, ["science", "benefits", "how does it work", "c60"]): return "faq_how_it_works"
+    # FAQ
+    if is_match(msg, ["authentic", "genuine", "real", "original", "is it real", "how to verify",
+                       "proof of authenticity", "certificate", "lab tested", "where is it from",
+                       "mined where", "russia", "karelia", "karelian"]): return "faq_authentic"
+    if is_match(msg, ["science", "benefits", "how does it work", "c60", "fullerene", "fullerenes",
+                       "carbon", "what does it do", "does shungite work", "proof", "research",
+                       "studies", "scientific", "evidence", "does it really work"]): return "faq_how_it_works"
+    if is_match(msg, ["why adishila", "why choose", "why you", "who are you", "about adishila",
+                       "about you", "your brand", "trust you", "can i trust", "how long have you been",
+                       "experience", "credibility"]): return "faq_credibility"
+    if is_match(msg, ["price", "cost", "how much", "rates", "charges", "pricing", "affordable",
+                       "expensive", "cheap", "value", "worth it", "cost effective"]): state.current_menu = "products"; return "menu_products"
+    if is_match(msg, ["contact", "email", "phone number", "whatsapp", "reach you", "call you",
+                       "talk to human", "talk to person", "connect", "human support", "real support"]): return "contact_support"
+    if is_match(msg, ["callback", "call me", "call me back", "arrange a call", "speak to someone",
+                       "book a call", "schedule a call", "i want a callback"]): return "start_callback_flow"
 
     return None
 
